@@ -1,8 +1,13 @@
 package com.jxzheng.whisper.schemes;
 
 import java.awt.image.BufferedImage;
+// import java.awt.Point;
 
-public class PakEtAl extends AbstractScheme {
+public class ZhangTangScheme extends AbstractScheme {
+
+    public ZhangTangScheme(BufferedImage coverImage) {
+        super(coverImage);
+    }
 
     @Override
     public BufferedImage embedMessage(String key, String message) {
