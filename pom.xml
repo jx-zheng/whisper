@@ -65,7 +65,7 @@
             <archive>
               <manifest>
                 <addClasspath>true</addClasspath>
-                <mainClass>com.jxzheng.whisper.App</mainClass>
+                <mainClass>com.jxzheng.whisper.Main</mainClass>
               </manifest>
             </archive>
           </configuration>
