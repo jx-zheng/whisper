@@ -9,13 +9,13 @@ public class PakEtAlScheme extends AbstractScheme {
     }
 
     @Override
-    public BufferedImage embedMessage(String key, String message) {
+    public BufferedImage embedMessage(byte[] key, byte[] message) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'embedMessage'");
     }
 
     @Override
-    public String extractMessage(String key) {
+    public byte[] extractMessage(byte[] key) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'extractMessage'");
     }
