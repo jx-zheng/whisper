@@ -2,6 +2,7 @@ package com.jxzheng.whisper.schemes;
 
 import java.awt.image.BufferedImage;
 import java.awt.Point;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Random;
 import java.util.Set;
@@ -17,6 +18,13 @@ public class ZhangTangScheme extends AbstractScheme {
         int pixelsNeeded = getNumberOfPixelsNeeded(message);
         Set<Point> selectedPixels = selectPixels(message, pixelsNeeded);
 
+        for(Point pixel : selectedPixels) {
+            int rgb = ZhangTangScheme.coverImage.getRGB(pixel.x, pixel.y);
+
+            byte red = (byte) ((rgb >> 16) & 0xFF);
+            byte green = (byte) ((rgb >> 8) & 0xFF);
+            byte blue = (byte) (rgb & 0xFF);
+        }
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'embedMessage'");
     }
@@ -25,6 +33,37 @@ public class ZhangTangScheme extends AbstractScheme {
     public byte[] extractMessage(byte[] key) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'extractMessage'");
+    }
+
+    private ArrayList<Byte> getMessageSegments(byte[] message, int segments) {
+        ArrayList<Byte> messageSegments = new ArrayList<Byte>();
+        int messageBitLength = message.length * 8;
+
+        for(int i = 0; i < segments; i++) {
+            byte currentSegment = 0;
+            int segmentLength = AbstractScheme.USABLE_BITS_PER_PIXEL;
+            int bitNumber = i * segmentLength;
+            int bitIndex = bitNumber % 8;
+            int byteIndex = bitNumber / 8;
+
+            currentSegment = (byte) ((message[byteIndex] << bitIndex) >> 8 - segmentLength);
+
+            boolean isOnByteEdge = bitIndex > (8 - segmentLength);
+            if(isOnByteEdge) {
+                int nextByte = message[byteIndex + 1];
+                currentSegment |= (byte) (nextByte);
+            }
+            messageSegments.add(currentSegment);
+        }
+
+        return messageSegments;
+    }
+
+    private int getNthBit(byte[] bytes, int n) {
+        int byteIndex = n / 8;
+        int bitIndex = n % 8;
+        byte b = bytes[byteIndex];
+        return (b >> (7 - bitIndex)) & 1;
     }
 
     private int getNumberOfPixelsNeeded(byte[] message) {
