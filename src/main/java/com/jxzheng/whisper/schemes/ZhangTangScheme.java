@@ -1,11 +1,18 @@
 package com.jxzheng.whisper.schemes;
 
 import java.awt.image.BufferedImage;
+import java.util.List;
+import java.awt.Color;
 import java.awt.Point;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Random;
 import java.util.Set;
+
+import com.jxzheng.whisper.media.PointComparator;
+import com.jxzheng.whisper.media.RgbPoint;
 
 public class ZhangTangScheme extends AbstractScheme {
 
@@ -17,13 +24,25 @@ public class ZhangTangScheme extends AbstractScheme {
     public BufferedImage embedMessage(byte[] key, byte[] message) {
         int pixelsNeeded = getNumberOfPixelsNeeded(message);
         Set<Point> selectedPixels = selectPixels(message, pixelsNeeded);
+        List<Point> sortedPixels = new ArrayList<Point>(selectedPixels);
+        Comparator<Point> pointComparator = new PointComparator();
+        Collections.sort(sortedPixels, pointComparator);
 
-        for(Point pixel : selectedPixels) {
-            int rgb = ZhangTangScheme.coverImage.getRGB(pixel.x, pixel.y);
+        List<RgbPoint> modifiedPixels = new ArrayList<RgbPoint>();
 
-            byte red = (byte) ((rgb >> 16) & 0xFF);
-            byte green = (byte) ((rgb >> 8) & 0xFF);
-            byte blue = (byte) (rgb & 0xFF);
+        for(Point pixel : sortedPixels) {
+            Color originalColor = getPixelRgb(pixel);
+
+            for(String color : AbstractScheme.RGB_COLORS) {
+                switch(color) {
+                    case "RED":
+                        break;
+                    case "GREEN":
+                        break;
+                    case "BLUE":
+                        break;
+                }
+            }
         }
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'embedMessage'");
@@ -33,6 +52,15 @@ public class ZhangTangScheme extends AbstractScheme {
     public byte[] extractMessage(byte[] key) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'extractMessage'");
+    }
+
+    private Color getPixelRgb(Point pixel) {
+        int rgba = ZhangTangScheme.coverImage.getRGB(pixel.x, pixel.y);
+        byte red = (byte) ((rgba >> 16) & 0xFF);
+        byte green = (byte) ((rgba >> 8) & 0xFF);
+        byte blue = (byte) (rgba & 0xFF);
+
+        return new Color(red, green, blue);
     }
 
     private ArrayList<Byte> getMessageSegments(byte[] message, int segments) {

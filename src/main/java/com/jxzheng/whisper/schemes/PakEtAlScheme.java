@@ -19,5 +19,5 @@ public class PakEtAlScheme extends AbstractScheme {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'extractMessage'");
     }
-    
+
 }
