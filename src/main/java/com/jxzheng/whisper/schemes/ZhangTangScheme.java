@@ -41,29 +41,26 @@ public class ZhangTangScheme extends AbstractScheme {
 
             List<Integer> newRgb = new ArrayList<Integer>();
             for (String rgb : AbstractScheme.RGB_COLORS) {
-                if(bitIndex > messageBitsLength) {
+                if (bitIndex > messageBitsLength) {
                     break;
                 }
                 final RgbPixel lastPixel = modifiedPixels.get(prevPointIndex);
                 int prevPixelColor;
                 int currentPixelColor;
                 int msgBit;
-                if(rgb.equals("RED")) {
+                if (rgb.equals("RED")) {
                     prevPixelColor = lastPixel.color().getRed();
                     currentPixelColor = pointColor.getRed();
                     msgBit = getNthBit(message, bitIndex);
-                }
-                else if(rgb.equals("GREEN")) {
+                } else if (rgb.equals("GREEN")) {
                     prevPixelColor = lastPixel.color().getGreen();
                     currentPixelColor = pointColor.getGreen();
                     msgBit = getNthBit(message, bitIndex + 1);
-                }
-                else if(rgb.equals("BLUE")) {
+                } else if (rgb.equals("BLUE")) {
                     prevPixelColor = lastPixel.color().getBlue();
                     currentPixelColor = pointColor.getBlue();
                     msgBit = getNthBit(message, bitIndex + 2);
-                }
-                else {
+                } else {
                     throw new IllegalArgumentException("Invalid color specified");
                 }
                 int newColor = calculateNewColor(currentPixelColor, prevPixelColor, msgBit);
@@ -86,10 +83,10 @@ public class ZhangTangScheme extends AbstractScheme {
         int prevColorLsb = prevColor & 1;
         int currentColorLsb = currentColor & 1;
         int newColor = currentColor + msgBit - (prevColorLsb + currentColorLsb) % 2;
-        if(newColor > 255) {
+        if (newColor > 255) {
             newColor -= 2;
         }
-        if(newColor < 0) {
+        if (newColor < 0) {
             newColor += 2;
         }
         return newColor;
@@ -105,32 +102,33 @@ public class ZhangTangScheme extends AbstractScheme {
     }
 
     // private ArrayList<Byte> getMessageSegments(byte[] message, int segments) {
-    //     ArrayList<Byte> messageSegments = new ArrayList<Byte>();
-    //     int messageBitLength = message.length * 8;
+    // ArrayList<Byte> messageSegments = new ArrayList<Byte>();
+    // int messageBitLength = message.length * 8;
 
-    //     for (int i = 0; i < segments; i++) {
-    //         byte currentSegment = 0;
-    //         int segmentLength = AbstractScheme.USABLE_BITS_PER_PIXEL;
-    //         int bitNumber = i * segmentLength;
-    //         int bitIndex = bitNumber % 8;
-    //         int byteIndex = bitNumber / 8;
+    // for (int i = 0; i < segments; i++) {
+    // byte currentSegment = 0;
+    // int segmentLength = AbstractScheme.USABLE_BITS_PER_PIXEL;
+    // int bitNumber = i * segmentLength;
+    // int bitIndex = bitNumber % 8;
+    // int byteIndex = bitNumber / 8;
 
-    //         currentSegment = (byte) ((message[byteIndex] << bitIndex) >> 8 - segmentLength);
+    // currentSegment = (byte) ((message[byteIndex] << bitIndex) >> 8 -
+    // segmentLength);
 
-    //         boolean isOnByteEdge = bitIndex > (8 - segmentLength);
-    //         if (isOnByteEdge) {
-    //             int nextByte = message[byteIndex + 1];
-    //             currentSegment |= (byte) (nextByte);
-    //         }
-    //         messageSegments.add(currentSegment);
-    //     }
+    // boolean isOnByteEdge = bitIndex > (8 - segmentLength);
+    // if (isOnByteEdge) {
+    // int nextByte = message[byteIndex + 1];
+    // currentSegment |= (byte) (nextByte);
+    // }
+    // messageSegments.add(currentSegment);
+    // }
 
-    //     return messageSegments;
+    // return messageSegments;
     // }
 
     private int getNthBit(byte[] bytes, int n) {
         int byteIndex = n / 8;
-        if(byteIndex > bytes.length) {
+        if (byteIndex > bytes.length) {
             throw new IllegalArgumentException("Bit requested is out of bounds");
         }
         int bitIndex = n % 8;
