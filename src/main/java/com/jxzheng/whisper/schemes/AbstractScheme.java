@@ -10,6 +10,7 @@ public abstract class AbstractScheme {
     public static final byte START_OF_TRANSMISSION = 2;
     public static final int MAX_RAW_MESSAGE_LENGTH = 65535;
     public static final int MESSAGE_HEADER_LENGTH = 3;
+    public static final int HEADER_POINTS = (MESSAGE_HEADER_LENGTH * 8) / USABLE_BITS_PER_PIXEL;
     public static final List<String> RGB_COLORS = List.of("RED", "GREEN", "BLUE");
 
     private BufferedImage image;

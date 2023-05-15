@@ -1,6 +1,7 @@
 package com.jxzheng.whisper.schemes;
 
 import java.awt.image.BufferedImage;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.awt.Color;
 import java.awt.Point;
@@ -11,6 +12,7 @@ import java.util.HashSet;
 import java.util.Random;
 import java.util.Set;
 
+import com.jxzheng.whisper.exceptions.CorruptOrInvalidStegoImageException;
 import com.jxzheng.whisper.exceptions.MessageTooLongException;
 import com.jxzheng.whisper.media.PointComparator;
 import com.jxzheng.whisper.media.RgbPixel;
@@ -24,11 +26,9 @@ public class ZhangTangScheme extends AbstractScheme {
     @Override
     public BufferedImage embedMessage(String key, String rawMessage) {
         byte[] message = buildEmbeddableMessage(rawMessage);
-        final int pixelsNeeded = getNumberOfPixelsNeeded(message);
+        final int pixelsNeeded = getNumberOfPixelsNeeded(message.length);
         final Set<Point> selectedPoints = selectPoints(key, pixelsNeeded);
-        final List<Point> sortedPoints = new ArrayList<Point>(selectedPoints);
-        final Comparator<Point> pointComparator = new PointComparator();
-        Collections.sort(sortedPoints, pointComparator);
+        final List<Point> sortedPoints = sortPoints(selectedPoints);
 
         List<RgbPixel> modifiedPixels = new ArrayList<RgbPixel>();
         final Point firstPoint = sortedPoints.get(0);
@@ -78,8 +78,15 @@ public class ZhangTangScheme extends AbstractScheme {
 
     @Override
     public String extractMessage(String key) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'extractMessage'");
+        final int messageLength = extractMessageLength(key);
+        final int totalEncodedPixels = getNumberOfPixelsNeeded(messageLength + AbstractScheme.MESSAGE_HEADER_LENGTH);
+        final Set<Point> selectedPoints = selectPoints(key, totalEncodedPixels);
+        final List<Point> sortedPoints = sortPoints(selectedPoints);
+        sortedPoints.subList(0, AbstractScheme.HEADER_POINTS).clear(); // remove header
+
+        byte[] extractedMessage = extractData(sortedPoints, messageLength);
+        String message = new String(extractedMessage, StandardCharsets.US_ASCII);
+        return message;
     }
 
     private byte[] buildEmbeddableMessage(String rawMessage) {
@@ -95,6 +102,74 @@ public class ZhangTangScheme extends AbstractScheme {
         System.arraycopy(rawMessageBytes, 0, embeddableMessage, 3, rawMessageLength);
 
         return embeddableMessage;
+    }
+
+    private int extractMessageLength(String key) {        
+        final Set<Point> headerPoints = selectPoints(key, AbstractScheme.HEADER_POINTS);
+        final List<Point> sortedHeaderPoints = sortPoints(headerPoints);
+        final byte[] extractedHeader = extractData(sortedHeaderPoints, AbstractScheme.MESSAGE_HEADER_LENGTH);
+        if(extractedHeader[3] != AbstractScheme.START_OF_TRANSMISSION) {
+            throw new CorruptOrInvalidStegoImageException("Couldn't find STX byte");
+        }
+        final int messageLength = extractedHeader[0] << 8 | extractedHeader[1];
+        return messageLength;
+    }
+
+    private byte[] extractData(List<Point> sortedPoints, int bytesExpected) {
+        byte[] extractedData = new byte[bytesExpected];
+        List<Color> pixelColors = new ArrayList<Color>();
+        Color firstPointColor = getPointRgb(sortedPoints.get(0));
+        pixelColors.add(firstPointColor);
+
+        int prevPointIndex = 0;
+        int bitIndex = 0;
+        int byteIndex = 0;
+        for(Point point : sortedPoints) {
+            Color pointColor = getPointRgb(point);
+
+            for(String rgb : AbstractScheme.RGB_COLORS) {
+                if(bitIndex == 8) {
+                    bitIndex = 0;
+                    byteIndex++;
+
+                    if(byteIndex == bytesExpected) {
+                        break;
+                    }
+                }
+                final Color lastPixel = pixelColors.get(prevPointIndex);
+                int prevPixelColor;
+                int currentPixelColor;
+                if(rgb.equals("RED")) {
+                    prevPixelColor = lastPixel.getRed();
+                    currentPixelColor = pointColor.getRed();
+                }
+                else if(rgb.equals("GREEN")) {
+                    prevPixelColor = lastPixel.getGreen();
+                    currentPixelColor = pointColor.getGreen();
+                }
+                else if(rgb.equals("BLUE")) {
+                    prevPixelColor = lastPixel.getBlue();
+                    currentPixelColor = pointColor.getBlue();
+                }
+                else {
+                    throw new IllegalArgumentException("Invalid color specified");
+                }
+                final int prevColorLsb = prevPixelColor & 1;
+                final int currentColorLsb = currentPixelColor & 1;
+                final int extractedBit = (prevColorLsb + currentColorLsb) % 2;
+                extractedData[byteIndex] = (byte) ((extractedData[byteIndex] << bitIndex) | extractedBit);
+                bitIndex++;
+            }
+            prevPointIndex++;
+        }
+        return extractedData;
+    }
+
+    private List<Point> sortPoints(Set<Point> points) {
+        List<Point> sortedPoints = new ArrayList<Point>(points);
+        final Comparator<Point> pointComparator = new PointComparator();
+        Collections.sort(sortedPoints, pointComparator);
+        return sortedPoints;
     }
 
     private BufferedImage buildModifiedImage(List<RgbPixel> modifiedPixels) {
@@ -166,8 +241,8 @@ public class ZhangTangScheme extends AbstractScheme {
         return (b >> (7 - bitIndex)) & 1;
     }
 
-    private int getNumberOfPixelsNeeded(byte[] message) {
-        int bitsInMessage = message.length * AbstractScheme.BITS_PER_MSG_CHARACTER;
+    private int getNumberOfPixelsNeeded(int messageLength) {
+        int bitsInMessage = messageLength * AbstractScheme.BITS_PER_MSG_CHARACTER;
         float usableBitsPerPixel = (float) AbstractScheme.USABLE_BITS_PER_PIXEL;
         int pixelsNeeded = (int) Math.ceil(bitsInMessage / usableBitsPerPixel);
         return pixelsNeeded;
