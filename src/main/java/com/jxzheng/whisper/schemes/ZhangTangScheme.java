@@ -11,19 +11,21 @@ import java.util.HashSet;
 import java.util.Random;
 import java.util.Set;
 
+import com.jxzheng.whisper.exceptions.MessageTooLongException;
 import com.jxzheng.whisper.media.PointComparator;
 import com.jxzheng.whisper.media.RgbPixel;
 
 public class ZhangTangScheme extends AbstractScheme {
 
-    public ZhangTangScheme(BufferedImage coverImage) {
-        super(coverImage);
+    public ZhangTangScheme(BufferedImage image) {
+        super(image);
     }
 
     @Override
-    public BufferedImage embedMessage(byte[] key, byte[] message) {
+    public BufferedImage embedMessage(String key, String rawMessage) {
+        byte[] message = buildEmbeddableMessage(rawMessage);
         final int pixelsNeeded = getNumberOfPixelsNeeded(message);
-        final Set<Point> selectedPoints = selectPoints(message, pixelsNeeded);
+        final Set<Point> selectedPoints = selectPoints(key, pixelsNeeded);
         final List<Point> sortedPoints = new ArrayList<Point>(selectedPoints);
         final Comparator<Point> pointComparator = new PointComparator();
         Collections.sort(sortedPoints, pointComparator);
@@ -68,15 +70,43 @@ public class ZhangTangScheme extends AbstractScheme {
                 bitIndex++;
             }
             prevPointIndex++;
+            Color newColor = new Color(newRgb.get(0), newRgb.get(2), newRgb.get(3));
+            modifiedPixels.add(new RgbPixel(point, newColor));
         }
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'embedMessage'");
+        return buildModifiedImage(modifiedPixels);
     }
 
     @Override
-    public byte[] extractMessage(byte[] key) {
+    public String extractMessage(String key) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'extractMessage'");
+    }
+
+    private byte[] buildEmbeddableMessage(String rawMessage) {
+        int rawMessageLength = rawMessage.length();
+        if(rawMessageLength > AbstractScheme.MAX_RAW_MESSAGE_LENGTH) {
+            throw new MessageTooLongException("Message exceeds max message length");
+        }
+        byte[] embeddableMessage = new byte[rawMessageLength + AbstractScheme.MESSAGE_HEADER_LENGTH];
+        byte[] rawMessageBytes = rawMessage.getBytes();
+        embeddableMessage[0] = (byte) ((rawMessageLength & 0xFFFF0000) >>> 8);
+        embeddableMessage[1] = (byte) (rawMessageLength & 0x0000FFFF);
+        embeddableMessage[2] = AbstractScheme.START_OF_TRANSMISSION;
+        System.arraycopy(rawMessageBytes, 0, embeddableMessage, 3, rawMessageLength);
+
+        return embeddableMessage;
+    }
+
+    private BufferedImage buildModifiedImage(List<RgbPixel> modifiedPixels) {
+        final int imageWidth = super.getImageWidth();
+        final int imageHeight = super.getImageHeight();
+        BufferedImage modifiedImage = super.getImage().getSubimage(0, 0, imageWidth, imageHeight);
+
+        for(RgbPixel pixel : modifiedPixels) {
+            modifiedImage.setRGB(pixel.point().x, pixel.point().y, pixel.color().getRGB());
+        }
+
+        return modifiedImage;
     }
 
     private int calculateNewColor(int currentColor, int prevColor, int msgBit) {
@@ -93,7 +123,7 @@ public class ZhangTangScheme extends AbstractScheme {
     }
 
     private Color getPointRgb(Point point) {
-        int rgba = ZhangTangScheme.coverImage.getRGB(point.x, point.y);
+        int rgba = super.getImage().getRGB(point.x, point.y);
         byte red = (byte) ((rgba >> 16) & 0xFF);
         byte green = (byte) ((rgba >> 8) & 0xFF);
         byte blue = (byte) (rgba & 0xFF);
@@ -143,14 +173,14 @@ public class ZhangTangScheme extends AbstractScheme {
         return pixelsNeeded;
     }
 
-    private Set<Point> selectPoints(byte[] seed, int pixelsNeeded) {
+    private Set<Point> selectPoints(String seed, int pixelsNeeded) {
         Set<Point> selectedPoints = new HashSet<Point>();
 
         Random random = new Random();
         random.setSeed(seed.hashCode());
 
-        int imageWidth = ZhangTangScheme.coverImage.getWidth();
-        int imageHeight = ZhangTangScheme.coverImage.getHeight();
+        int imageWidth = super.getImageWidth();
+        int imageHeight = super.getImageHeight();
 
         while (selectedPoints.size() < pixelsNeeded) {
             int x = random.nextInt(imageWidth) + 1;
