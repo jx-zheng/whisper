@@ -2,6 +2,7 @@ package com.jxzheng.whisper.schemes;
 
 import java.awt.image.BufferedImage;
 import java.util.List;
+import java.util.Random;
 
 public abstract class AbstractScheme {
 
@@ -10,17 +11,21 @@ public abstract class AbstractScheme {
     public static final byte START_OF_TRANSMISSION = 2;
     public static final int MAX_RAW_MESSAGE_LENGTH = 65535;
     public static final int MESSAGE_HEADER_LENGTH = 3;
-    public static final int HEADER_POINTS = (MESSAGE_HEADER_LENGTH * 8) / USABLE_BITS_PER_PIXEL;
+    public static final int HEADER_POINTS = 1 + (MESSAGE_HEADER_LENGTH * 8) / USABLE_BITS_PER_PIXEL;
     public static final List<String> RGB_COLORS = List.of("RED", "GREEN", "BLUE");
 
     private BufferedImage image;
     private int imageWidth;
     private int imageHeight;
+    private Random random;
+    private String key;
 
-    public AbstractScheme(BufferedImage image) {
+    public AbstractScheme(BufferedImage image, String key) {
         this.image = image;
         this.imageWidth = image.getWidth();
         this.imageHeight = image.getHeight();
+        this.random = new Random(key.hashCode());
+        this.key = key;
     }
 
     public BufferedImage getImage() {
@@ -35,8 +40,16 @@ public abstract class AbstractScheme {
         return this.imageHeight;
     }
 
-    public abstract BufferedImage embedMessage(String key, String message);
+    public Random getRandom() {
+        return this.random;
+    }
 
-    public abstract String extractMessage(String key);
+    public void restartRandomSequence() {
+        this.random = new Random(key.hashCode());
+    }
+
+    public abstract BufferedImage embedMessage(String message);
+
+    public abstract String extractMessage();
 
 }
