@@ -11,6 +11,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Set;
 
+import com.google.inject.Inject;
 import com.jxzheng.whisper.exceptions.CorruptOrInvalidStegoImageException;
 import com.jxzheng.whisper.exceptions.MessageTooLongException;
 import com.jxzheng.whisper.media.PointComparator;
@@ -18,6 +19,7 @@ import com.jxzheng.whisper.media.RgbPixel;
 
 public class ZhangTangScheme extends AbstractScheme {
 
+    @Inject
     public ZhangTangScheme(BufferedImage image, String key) {
         super(image, key);
     }

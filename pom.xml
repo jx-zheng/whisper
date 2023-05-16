@@ -32,7 +32,7 @@
     <dependency>
       <groupId>com.google.inject</groupId>
       <artifactId>guice</artifactId>
-      <version>7.0.0</version>
+      <version>5.1.0</version>
     </dependency>
   </dependencies>
 
@@ -91,6 +91,28 @@
           <artifactId>maven-project-info-reports-plugin</artifactId>
           <version>3.0.0</version>
         </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-shade-plugin</artifactId>
+          <version>3.4.1</version>
+          <executions>
+            <execution>
+              <phase>package</phase>
+              <goals>
+                <goal>shade</goal>
+              </goals>
+                          <!-- <configuration>
+        <archive>
+          <manifest>
+            <addClasspath>true</addClasspath>
+            <mainClass>com.jxzheng.whisper.Main</mainClass>
+          </manifest>
+        </archive>
+            </configuration> -->
+            </execution>
+            
+          </executions>
+      </plugin>
       </plugins>
     </pluginManagement>
   </build>
