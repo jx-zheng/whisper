@@ -10,7 +10,7 @@ public class PointComparatorTest {
     private final PointComparator testComparator = new PointComparator();
 
     @Test
-    public void SameXDifferentY() {
+    public void test_sameXDifferentY() {
         Point a = new Point(5, 10);
         Point b = new Point(5, 12);
 
@@ -19,7 +19,7 @@ public class PointComparatorTest {
     }
 
     @Test
-    public void SameYDifferentX() {
+    public void test_sameYDifferentX() {
         Point a = new Point(6, 10);
         Point b = new Point(5, 10);
 
@@ -28,7 +28,7 @@ public class PointComparatorTest {
     }
 
     @Test
-    public void SameXSameY() {
+    public void test_sameXSameY() {
         Point a = new Point(100, 90);
         Point b = new Point(100, 90);
 
@@ -37,7 +37,7 @@ public class PointComparatorTest {
     }
 
     @Test
-    public void DifferentXDifferentY() {
+    public void test_differentXDifferentY() {
         Point a = new Point(101, 85);
         Point b = new Point(100, 90);
 

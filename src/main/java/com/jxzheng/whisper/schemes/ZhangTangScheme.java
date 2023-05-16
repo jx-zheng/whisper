@@ -36,6 +36,7 @@ public class ZhangTangScheme extends AbstractScheme {
         final RgbPixel firstPixel = new RgbPixel(firstPoint, getPointRgb(firstPoint));
         modifiedPixels.add(firstPixel);
 
+        // TODO: reduce length of this function
         final int payloadBitsLength = payload.length * 8;
         int prevPointIndex = 0;
         int bitIndex = 0;
@@ -173,7 +174,6 @@ public class ZhangTangScheme extends AbstractScheme {
                 final int currentColorLsb = currentPixelColor & 1;
                 final int extractedBit = (prevColorLsb + currentColorLsb) % 2;
                 extractedData[byteIndex] = (byte) ((extractedData[byteIndex] << 1) | extractedBit);
-                // TODO: fix last pixel byte not shifting all the way to the correct left position due to break early
                 bitIndex++;
             }
             prevPointIndex++;
