@@ -3,7 +3,7 @@ Secure steganographic communication made easy
 
 ![Person writing with fountain pen](https://images.unsplash.com/photo-1455390582262-044cdead277a?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=300&q=80)
 
-**whisper** is a Java command line tool that allows you to embed [steganographic](https://en.wikipedia.org/wiki/Steganography) messages in RGB images via stenographic techniques.
+**whisper** is a Java command line tool that allows you to embed secret hidden messages in RGB images via [stenographic](https://en.wikipedia.org/wiki/Steganography) techniques.
 The technique used in whisper is based on research by Hong-Juan Zhang and Hong-Jun Tang, as outlined in their paper, [A Novel Image Steganography Algorithm Against Statistical Analysis](https://ieeexplore.ieee.org/document/4370824).
 
 ## Building
