@@ -39,6 +39,9 @@ java -jar target/whisper-0.9.0.jar extract -i stego.png -k my-secret-key
 
 # Extract encrypted payload
 java -jar target/whisper-0.9.0.jar extract -i stego.png -k my-secret-key -e
+
+# Chi-square + RS steganalysis checks
+java -jar target/whisper-0.9.0.jar analyze -i stego.png
 ```
 
 | Flag | Meaning |
@@ -54,6 +57,10 @@ java -jar target/whisper-0.9.0.jar extract -i stego.png -k my-secret-key -e
 | `-h, --help` | Usage help |
 
 **Use PNG (or BMP).** Embed allow-lists PNG/BMP only — JPEG/WebP/GIF and unknown extensions are rejected because they destroy LSBs (GIF via palette quantization). Cover warnings are filename-extension heuristics only.
+
+## Statistical checks
+
+`analyze` runs Westfeld–Pfitzmann chi-square and Fridrich RS heuristics. Treat them as relative diagnostics (cover vs stego), not calibrated detectors — absolute thresholds vary by image.
 
 ## Testing
 

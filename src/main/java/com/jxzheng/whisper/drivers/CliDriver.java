@@ -16,6 +16,8 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
+import com.jxzheng.whisper.analysis.ChiSquareAnalyzer;
+import com.jxzheng.whisper.analysis.RsAnalyzer;
 import com.jxzheng.whisper.encryption.AesCipher;
 import com.jxzheng.whisper.encryption.CipherService;
 import com.jxzheng.whisper.exceptions.EncryptionException;
@@ -24,11 +26,12 @@ import com.jxzheng.whisper.schemes.AbstractScheme;
 import com.jxzheng.whisper.schemes.ZhangTangScheme;
 
 /**
- * Command-line front-end for embed and extract operations.
+ * Command-line front-end for embed, extract, and statistical analysis.
  *
  * <pre>
  *   whisper embed   -i cover.png -o stego.png -m "secret" -k passphrase [-e]
  *   whisper extract -i stego.png -k passphrase [-e] [-o message.txt]
+ *   whisper analyze -i stego.png
  * </pre>
  */
 public class CliDriver {
@@ -56,6 +59,7 @@ public class CliDriver {
             return switch (command) {
                 case "embed" -> runEmbed(commandArgs);
                 case "extract" -> runExtract(commandArgs);
+                case "analyze" -> runAnalyze(commandArgs);
                 case "help", "-h", "--help" -> {
                     printHelp();
                     yield 0;
@@ -149,6 +153,38 @@ public class CliDriver {
         return 0;
     }
 
+    private int runAnalyze(String[] args) throws ParseException, IOException {
+        CommandLine cl = new DefaultParser().parse(options, args);
+        if (cl.hasOption("help")) {
+            printHelp();
+            return 0;
+        }
+
+        Path inputPath = requiredPath(cl, "input-file");
+        BufferedImage image = ImageIO.read(inputPath.toFile());
+        if (image == null) {
+            throw new IOException("Could not read image: " + inputPath);
+        }
+
+        ChiSquareAnalyzer.Result chi = new ChiSquareAnalyzer().analyze(image);
+        RsAnalyzer.Result rs = new RsAnalyzer().analyze(image);
+
+        System.out.printf(Locale.ROOT, "File: %s (%dx%d)%n", inputPath, image.getWidth(), image.getHeight());
+        System.out.printf(Locale.ROOT,
+                "Chi-square: χ²=%.4f  df=%d  p=%.6g  pairBalance=%.4f  stego-like@0.95=%s%n",
+                chi.chiSquare(), chi.degreesOfFreedom(), chi.pValue(), chi.pairBalance(),
+                chi.stegoLike(0.95));
+        System.out.println("  (Westfeld: high p / high pairBalance ⇒ PoVs look equalized / classic-LSB-like.)");
+        System.out.printf(Locale.ROOT, "RS analysis: estimated classic-LSB rate=%s%n",
+                Double.isFinite(rs.estimatedRate()) ? String.format(Locale.ROOT, "%.4f", rs.estimatedRate()) : "n/a");
+        System.out.printf(Locale.ROOT, "  Rm=%.4f Sm=%.4f R-m=%.4f S-m=%.4f  asymmetry=%.4f%n",
+                rs.regularM(), rs.singularM(), rs.regularMinusM(), rs.singularMinusM(), rs.maskAsymmetry());
+        System.out.println("""
+                Heuristics only — calibrate on your cover set. Compare cover vs stego;
+                Zhang–Tang typically moves these less than naive LSB at the same payload.""");
+        return 0;
+    }
+
     private static AbstractScheme createScheme(CommandLine cl, BufferedImage image, String key) {
         String schemeName = cl.getOptionValue("scheme", DEFAULT_SCHEME).toLowerCase(Locale.ROOT);
         return switch (schemeName) {
@@ -192,24 +228,27 @@ public class CliDriver {
 
     private void printHelp() {
         helpFormatter.printHelp(
-                "whisper <embed|extract> [options]",
+                "whisper <embed|extract|analyze> [options]",
                 """
-                Embed a secret message in an RGB image, or extract one back out.
+                Embed a secret message in an RGB image, extract one, or run statistical checks.
 
                 Commands:
                   embed     Hide a message in a cover image
                   extract   Recover a message from a stego image
+<<<<<<< HEAD
 
                 Stego output must be PNG or BMP (allow-listed RGB containers).
                 JPEG/WebP/GIF and other formats are rejected because they destroy LSBs.
+=======
+                  analyze   Run chi-square and RS steganalysis on an image
+>>>>>>> cursor/rs-chi-square-checks-b4c6
                 """,
                 options,
                 """
                 Examples:
                   whisper embed -i cover.png -o stego.png -m "hello" -k secret
-                  whisper embed -i cover.png -o stego.png -m "hello" -k secret -e
                   whisper extract -i stego.png -k secret
-                  whisper extract -i stego.png -k secret -e
+                  whisper analyze -i stego.png
                 """,
                 true);
     }
