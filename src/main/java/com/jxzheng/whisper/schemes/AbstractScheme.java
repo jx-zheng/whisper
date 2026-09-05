@@ -1,12 +1,10 @@
 package com.jxzheng.whisper.schemes;
 
 import java.awt.image.BufferedImage;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Random;
+
+import com.jxzheng.whisper.crypto.KeyedPrng;
 
 /**
  * Base type for image steganography schemes.
@@ -47,7 +45,7 @@ public abstract class AbstractScheme {
         this.imageWidth = image.getWidth();
         this.imageHeight = image.getHeight();
         this.key = key;
-        this.random = createKeyedRandom(key);
+        this.random = KeyedPrng.fromPassphrase(key);
     }
 
     public BufferedImage getImage() {
@@ -71,23 +69,7 @@ public abstract class AbstractScheme {
     }
 
     public void restartRandomSequence() {
-        this.random = createKeyedRandom(key);
-    }
-
-    /**
-     * Seeds {@link Random} from SHA-256(passphrase) rather than
-     * {@link String#hashCode()}, which only has 32 bits and collides easily.
-     * Prefer the HMAC stream PRNG from the stronger-prng follow-up for production use.
-     */
-    private static Random createKeyedRandom(String key) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(key.getBytes(StandardCharsets.UTF_8));
-            long seed = ByteBuffer.wrap(digest, 0, Long.BYTES).getLong();
-            return new Random(seed);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 unavailable", e);
-        }
+        this.random = KeyedPrng.fromPassphrase(key);
     }
 
     public abstract BufferedImage embedMessage(byte[] message);
