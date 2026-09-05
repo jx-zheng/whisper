@@ -7,7 +7,7 @@ Steganographic messaging via Zhang–Tang LSB-pair embedding.
 The scheme hides each secret bit `m` in a color-channel sample `c` relative to the previous sample `p` so that `(LSB(p) + LSB(c')) mod 2 == m`, adjusting `c` by at most ±1 (with overflow corrected by ±2). Pixel walk order is keyed, so extraction needs the same passphrase. A truncated HMAC over the length header rejects most wrong-key extractions.
 
 Optional AES-128-GCM (PBKDF2 key derivation) can encrypt the payload before embedding.
-Pixel walks are keyed from SHA-256(passphrase); use `-e` when confidentiality matters.
+Pixel walks use a PBKDF2-stretched HMAC-SHA256 counter PRNG (not `String.hashCode()`). This changes walks vs earlier builds — re-embed existing messages. Use `-e` when confidentiality matters.
 Passphrases on the command line may be visible to other local users — prefer a private shell history.
 
 ## Requirements
