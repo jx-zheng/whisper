@@ -39,6 +39,9 @@ java -jar target/whisper-0.9.0.jar extract -i stego.png -k my-secret-key
 
 # Extract encrypted payload
 java -jar target/whisper-0.9.0.jar extract -i stego.png -k my-secret-key -e
+
+# Chi-square + RS steganalysis checks
+java -jar target/whisper-0.9.0.jar analyze -i stego.png
 ```
 
 | Flag | Meaning |
@@ -54,6 +57,10 @@ java -jar target/whisper-0.9.0.jar extract -i stego.png -k my-secret-key -e
 | `-h, --help` | Usage help |
 
 Prefer lossless formats such as PNG for the stego output. Lossy formats (e.g. JPEG) will destroy the embedded bits.
+
+## Statistical checks
+
+`analyze` runs Westfeld–Pfitzmann chi-square and Fridrich RS tests. Zhang–Tang is designed to resist these better than naive LSB replacement — compare cover vs stego for a relative reading (absolute thresholds vary by image).
 
 ## Testing
 
