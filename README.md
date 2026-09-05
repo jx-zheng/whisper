@@ -53,7 +53,7 @@ java -jar target/whisper-0.9.0.jar extract -i stego.png -k my-secret-key -e
 | `-c, --cipher` | Cipher name when `-e` is set (default: `aes`) |
 | `-h, --help` | Usage help |
 
-Prefer lossless formats such as PNG for the stego output. Lossy formats (e.g. JPEG) will destroy the embedded bits.
+**Use PNG (or BMP).** Embed allow-lists PNG/BMP only — JPEG/WebP/GIF and unknown extensions are rejected because they destroy LSBs (GIF via palette quantization). Cover warnings are filename-extension heuristics only.
 
 ## Testing
 
