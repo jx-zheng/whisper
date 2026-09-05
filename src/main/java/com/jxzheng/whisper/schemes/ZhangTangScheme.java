@@ -3,12 +3,17 @@ package com.jxzheng.whisper.schemes;
 import java.awt.Color;
 import java.awt.Point;
 import java.awt.image.BufferedImage;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 import com.jxzheng.whisper.exceptions.CorruptOrInvalidStegoImageException;
 import com.jxzheng.whisper.exceptions.MessageTooLongException;
@@ -42,6 +47,7 @@ public class ZhangTangScheme extends AbstractScheme {
                     "Message exceeds max message length of " + MAX_PAYLOAD_LENGTH);
         }
 
+        restartRandomSequence();
         PixelPlan plan = planPixels(rawMessage.length);
         byte[] header = buildHeader(rawMessage.length);
 
@@ -80,20 +86,40 @@ public class ZhangTangScheme extends AbstractScheme {
         return new PixelPlan(headerPoints, bodyPoints);
     }
 
-    private static byte[] buildHeader(int messageLength) {
-        return new byte[] {
-                (byte) ((messageLength >> 8) & 0xFF),
-                (byte) (messageLength & 0xFF),
-                START_OF_TRANSMISSION
-        };
+    private byte[] buildHeader(int messageLength) {
+        byte[] header = new byte[MESSAGE_HEADER_LENGTH];
+        header[0] = (byte) ((messageLength >> 8) & 0xFF);
+        header[1] = (byte) (messageLength & 0xFF);
+        byte[] tag = headerMac(header[0], header[1]);
+        header[2] = tag[0];
+        header[3] = tag[1];
+        return header;
     }
 
-    private static int parseHeader(byte[] header) {
-        if (header[2] != START_OF_TRANSMISSION) {
+    private int parseHeader(byte[] header) {
+        byte[] expected = headerMac(header[0], header[1]);
+        if (header[2] != expected[0] || header[3] != expected[1]) {
             throw new CorruptOrInvalidStegoImageException(
-                    "Couldn't find STX byte; wrong key or not a whisper image?");
+                    "Header MAC mismatch; wrong key or not a whisper image?");
         }
         return ((header[0] & 0xFF) << 8) | (header[1] & 0xFF);
+    }
+
+    /**
+     * Truncated HMAC-SHA256 over the length bytes, keyed by the stego passphrase.
+     * Two bytes give 1/65536 false-accept under a wrong key (vs 1/256 for a lone STX).
+     */
+    private byte[] headerMac(byte lengthHigh, byte lengthLow) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(getKey().getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            mac.update(lengthHigh);
+            mac.update(lengthLow);
+            byte[] full = mac.doFinal();
+            return new byte[] {full[0], full[1]};
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("HMAC-SHA256 unavailable", e);
+        }
     }
 
     private List<RgbPixel> embedIntoChain(List<Point> points, byte[] payload, BufferedImage source) {

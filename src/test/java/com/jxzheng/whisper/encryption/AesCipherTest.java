@@ -40,6 +40,7 @@ class AesCipherTest {
     @Test
     void ciphertextIncludesSaltAndIv() throws EncryptionException {
         byte[] ciphertext = cipher.encrypt("x".getBytes(StandardCharsets.UTF_8), "key");
-        assertTrue(ciphertext.length > 32);
+        // 16-byte salt + 12-byte IV + ciphertext/tag
+        assertTrue(ciphertext.length > 28);
     }
 }

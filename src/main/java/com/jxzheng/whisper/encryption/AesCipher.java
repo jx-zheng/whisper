@@ -2,30 +2,30 @@ package com.jxzheng.whisper.encryption;
 
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
-import java.security.spec.KeySpec;
 import java.util.Arrays;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 
 import com.jxzheng.whisper.exceptions.EncryptionException;
 
 /**
- * AES-128-CBC with PKCS5 padding. Ciphertext layout:
- * {@code [16-byte salt][16-byte IV][ciphertext...]}.
+ * AES-128-GCM. Ciphertext layout:
+ * {@code [16-byte salt][12-byte IV][ciphertext || 16-byte tag]}.
  * The key is derived via PBKDF2-HMAC-SHA256.
  */
 public class AesCipher implements CipherService {
 
-    private static final String TRANSFORMATION = "AES/CBC/PKCS5Padding";
+    private static final String TRANSFORMATION = "AES/GCM/NoPadding";
     private static final String KEY_ALGORITHM = "AES";
     private static final String KDF_ALGORITHM = "PBKDF2WithHmacSHA256";
-    private static final int AES_KEY_BYTES = 16;
-    private static final int IV_BYTES = 16;
+    private static final int AES_KEY_BITS = 128;
+    private static final int GCM_TAG_BITS = 128;
+    private static final int IV_BYTES = 12;
     private static final int SALT_BYTES = 16;
     private static final int PBKDF2_ITERATIONS = 65_536;
 
@@ -45,7 +45,7 @@ public class AesCipher implements CipherService {
 
         try {
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
-            cipher.init(Cipher.ENCRYPT_MODE, deriveKey(key, salt), new IvParameterSpec(iv));
+            cipher.init(Cipher.ENCRYPT_MODE, deriveKey(key, salt), new GCMParameterSpec(GCM_TAG_BITS, iv));
             byte[] ciphertext = cipher.doFinal(plaintext);
 
             byte[] result = new byte[SALT_BYTES + IV_BYTES + ciphertext.length];
@@ -54,7 +54,7 @@ public class AesCipher implements CipherService {
             System.arraycopy(ciphertext, 0, result, SALT_BYTES + IV_BYTES, ciphertext.length);
             return result;
         } catch (GeneralSecurityException e) {
-            throw new EncryptionException("Failed to encrypt with AES", e);
+            throw new EncryptionException("Failed to encrypt with AES-GCM", e);
         }
     }
 
@@ -74,18 +74,22 @@ public class AesCipher implements CipherService {
 
         try {
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
-            cipher.init(Cipher.DECRYPT_MODE, deriveKey(key, salt), new IvParameterSpec(iv));
+            cipher.init(Cipher.DECRYPT_MODE, deriveKey(key, salt), new GCMParameterSpec(GCM_TAG_BITS, iv));
             return cipher.doFinal(encrypted);
         } catch (GeneralSecurityException e) {
-            throw new EncryptionException("Failed to decrypt with AES", e);
+            throw new EncryptionException("Failed to decrypt with AES-GCM", e);
         }
     }
 
     private static SecretKey deriveKey(String key, byte[] salt) throws GeneralSecurityException {
-        KeySpec spec = new PBEKeySpec(key.toCharArray(), salt, PBKDF2_ITERATIONS, AES_KEY_BYTES * 8);
-        SecretKeyFactory factory = SecretKeyFactory.getInstance(KDF_ALGORITHM);
-        byte[] keyBytes = factory.generateSecret(spec).getEncoded();
-        return new SecretKeySpec(keyBytes, KEY_ALGORITHM);
+        PBEKeySpec spec = new PBEKeySpec(key.toCharArray(), salt, PBKDF2_ITERATIONS, AES_KEY_BITS);
+        try {
+            SecretKeyFactory factory = SecretKeyFactory.getInstance(KDF_ALGORITHM);
+            byte[] keyBytes = factory.generateSecret(spec).getEncoded();
+            return new SecretKeySpec(keyBytes, KEY_ALGORITHM);
+        } finally {
+            spec.clearPassword();
+        }
     }
 
     private static void requireKey(String key) {

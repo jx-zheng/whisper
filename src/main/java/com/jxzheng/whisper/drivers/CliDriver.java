@@ -131,13 +131,13 @@ public class CliDriver {
             payload = createCipher(cl).decrypt(payload, key);
         }
 
-        String message = new String(payload, StandardCharsets.UTF_8);
         if (cl.hasOption("output-file")) {
             Path outputPath = Path.of(cl.getOptionValue("output-file"));
-            Files.writeString(outputPath, message, StandardCharsets.UTF_8);
-            System.out.println("Wrote extracted message to " + outputPath);
+            Files.write(outputPath, payload);
+            System.out.println("Wrote extracted message (" + payload.length + " byte(s)) to " + outputPath);
         } else {
-            System.out.println(message);
+            System.out.write(payload);
+            System.out.println();
         }
         return 0;
     }
