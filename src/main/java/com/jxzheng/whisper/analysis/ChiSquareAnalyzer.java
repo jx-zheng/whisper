@@ -6,7 +6,8 @@ import java.awt.image.BufferedImage;
  * Westfeld–Pfitzmann chi-square steganalysis over RGB sample histograms.
  *
  * <p>Classic LSB embedding equalizes adjacent even/odd histogram bins (PoVs).
- * Under the equal-PoV null, a <strong>high</strong> p-value is stego-like.
+ * χ² uses one term per PoV (even bin vs expected), matching Westfeld. Under the
+ * equal-PoV null, a <strong>high</strong> p-value is stego-like.
  */
 public final class ChiSquareAnalyzer {
 
@@ -49,8 +50,8 @@ public final class ChiSquareAnalyzer {
                 continue;
             }
             double expected = total / 2.0;
+            // Westfeld: sum only over the even (or only odd) observed counts.
             chiSquare += Math.pow(even - expected, 2) / expected;
-            chiSquare += Math.pow(odd - expected, 2) / expected;
             balanceSum += 1.0 - (Math.abs(even - odd) / (double) total);
             pairsUsed++;
         }

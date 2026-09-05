@@ -6,12 +6,13 @@ import java.awt.image.BufferedImage;
  * Fridrich RS (Regular/Singular) steganalysis.
  *
  * <p>Estimates classic LSB embedding rate from non-overlapping 4-pixel groups
- * using discrimination function {@code Σ|xᵢ₊₁-xᵢ|} and flip masks M / −M.
+ * using discrimination {@code Σ|xᵢ₊₁-xᵢ|}, flip operator {@code F₁} (LSB flip)
+ * on mask M, and dual {@code F₋₁} on the same support.
  */
 public final class RsAnalyzer {
 
+    /** Support mask M = [0,1,1,0] — F₁ / F₋₁ applied where the entry is 1. */
     private static final int[] MASK_M = {0, 1, 1, 0};
-    private static final int[] MASK_MINUS_M = {1, 0, 0, 1};
 
     public record Result(
             double estimatedRate,
@@ -29,12 +30,14 @@ public final class RsAnalyzer {
         Stats original = analyzeImage(image);
         Stats flipped = analyzeImage(flipAllLsbs(image));
 
+        // Paper: d0=R_M-S_M, dMinus0=R_{-M}-S_{-M} on the image;
+        // d1 / dMinus1 are the same quantities on the all-LSB-flipped image.
         double d0 = original.rm - original.sm;
-        double d1 = original.rMinus - original.sMinus;
-        double dInf = flipped.rm - flipped.sm;
-        double dMinusInf = flipped.rMinus - flipped.sMinus;
+        double dMinus0 = original.rMinus - original.sMinus;
+        double d1 = flipped.rm - flipped.sm;
+        double dMinus1 = flipped.rMinus - flipped.sMinus;
 
-        double rate = solveRate(d0, d1, dInf, dMinusInf);
+        double rate = solveRate(d0, dMinus0, d1, dMinus1);
         return new Result(rate, original.rm, original.sm, original.rMinus, original.sMinus);
     }
 
@@ -69,8 +72,8 @@ public final class RsAnalyzer {
                     group[i] = (image.getRGB(x + i, y) >> shift) & 0xFF;
                 }
                 groups++;
-                int cM = classify(group, MASK_M);
-                int cMinus = classify(group, MASK_MINUS_M);
+                int cM = classify(group, /* useF1= */ true);
+                int cMinus = classify(group, /* useF1= */ false);
                 if (cM > 0) {
                     regularM++;
                 } else if (cM < 0) {
@@ -94,9 +97,12 @@ public final class RsAnalyzer {
                 singularMinus / (double) groups);
     }
 
-    static int classify(int[] group, int[] mask) {
+    /**
+     * @param useF1 {@code true} applies F₁ on M; {@code false} applies F₋₁ on M
+     */
+    static int classify(int[] group, boolean useF1) {
         double original = smoothness(group);
-        double after = smoothness(flip(group, mask));
+        double after = smoothness(applyMask(group, useF1));
         return Double.compare(after, original);
     }
 
@@ -108,14 +114,24 @@ public final class RsAnalyzer {
         return sum;
     }
 
-    static int[] flip(int[] group, int[] mask) {
+    static int[] applyMask(int[] group, boolean useF1) {
         int[] out = group.clone();
         for (int i = 0; i < out.length; i++) {
-            if (mask[i] == 1) {
-                out[i] ^= 1;
+            if (MASK_M[i] == 1) {
+                out[i] = useF1 ? flipF1(out[i]) : flipFMinus1(out[i]);
             }
         }
         return out;
+    }
+
+    /** F₁: flip LSB (0↔1, 2↔3, …). */
+    static int flipF1(int value) {
+        return value ^ 1;
+    }
+
+    /** F₋₁(x) = F₁(x+1) − 1 (pairs …, −1↔0, 1↔2, 3↔4, …). */
+    static int flipFMinus1(int value) {
+        return flipF1(value + 1) - 1;
     }
 
     private static BufferedImage flipAllLsbs(BufferedImage source) {
@@ -133,25 +149,45 @@ public final class RsAnalyzer {
         return copy;
     }
 
-    static double solveRate(double d0, double d1, double dInf, double dMinusInf) {
-        double a = 2.0 * (dInf + d0);
-        double b = dMinusInf - dInf - d1 - 3.0 * d0;
-        double c = d0 - dInf;
+    /**
+     * Fridrich RS quadratic. Roots are in a translated coordinate; the embedding
+     * rate is {@code p = x / (x - 1/2)}.
+     *
+     * @param d0       R_M − S_M on the image
+     * @param dMinus0  R_{-M} − S_{-M} on the image
+     * @param d1       R_M − S_M on the LSB-flipped image
+     * @param dMinus1  R_{-M} − S_{-M} on the LSB-flipped image
+     */
+    static double solveRate(double d0, double dMinus0, double d1, double dMinus1) {
+        double a = 2.0 * (d1 + d0);
+        double b = dMinus0 - dMinus1 - d1 - 3.0 * d0;
+        double c = d0 - dMinus0;
 
-        double rate;
+        double x;
         if (Math.abs(a) < 1e-12) {
-            rate = Math.abs(b) < 1e-12 ? 0.0 : -c / b;
+            if (Math.abs(b) < 1e-12) {
+                return 0.0;
+            }
+            x = -c / b;
         } else {
-            double discriminant = Math.max(0.0, b * b - 4.0 * a * c);
+            double discriminant = b * b - 4.0 * a * c;
+            if (discriminant < 0) {
+                return Double.NaN;
+            }
             double sqrt = Math.sqrt(discriminant);
             double root1 = (-b + sqrt) / (2.0 * a);
             double root2 = (-b - sqrt) / (2.0 * a);
-            rate = Math.abs(root1) <= Math.abs(root2) ? root1 : root2;
+            x = Math.abs(root1) <= Math.abs(root2) ? root1 : root2;
         }
-        if (Double.isNaN(rate) || Double.isInfinite(rate)) {
-            return 0.0;
+
+        if (Double.isNaN(x) || Double.isInfinite(x) || Math.abs(x - 0.5) < 1e-12) {
+            return Double.NaN;
         }
-        return Math.max(0.0, Math.min(1.0, rate));
+        double p = x / (x - 0.5);
+        if (Double.isNaN(p) || Double.isInfinite(p)) {
+            return Double.NaN;
+        }
+        return Math.max(0.0, Math.min(1.0, Math.abs(p)));
     }
 
     private record Stats(double rm, double sm, double rMinus, double sMinus) {

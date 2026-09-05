@@ -168,12 +168,13 @@ public class CliDriver {
                 chi.chiSquare(), chi.degreesOfFreedom(), chi.pValue(), chi.pairBalance(),
                 chi.stegoLike(0.95));
         System.out.println("  (Westfeld: high p / high pairBalance ⇒ PoVs look equalized / classic-LSB-like.)");
-        System.out.printf(Locale.ROOT, "RS analysis: estimated classic-LSB rate=%.4f%n", rs.estimatedRate());
-        System.out.printf(Locale.ROOT, "  Rm=%.4f Sm=%.4f R-m=%.4f S-m=%.4f%n",
-                rs.regularM(), rs.singularM(), rs.regularMinusM(), rs.singularMinusM());
+        System.out.printf(Locale.ROOT, "RS analysis: estimated classic-LSB rate=%s%n",
+                Double.isFinite(rs.estimatedRate()) ? String.format(Locale.ROOT, "%.4f", rs.estimatedRate()) : "n/a");
+        System.out.printf(Locale.ROOT, "  Rm=%.4f Sm=%.4f R-m=%.4f S-m=%.4f  asymmetry=%.4f%n",
+                rs.regularM(), rs.singularM(), rs.regularMinusM(), rs.singularMinusM(), rs.maskAsymmetry());
         System.out.println("""
-                Note: Zhang–Tang is designed to keep these closer to cover-image levels than
-                naive LSB replacement. Compare a cover vs stego pair for a relative reading.""");
+                Heuristics only — calibrate on your cover set. Compare cover vs stego;
+                Zhang–Tang typically moves these less than naive LSB at the same payload.""");
         return 0;
     }
 

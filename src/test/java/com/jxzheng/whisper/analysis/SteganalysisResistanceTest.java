@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.image.BufferedImage;
+import java.util.Arrays;
 import java.util.Random;
 
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,9 @@ class SteganalysisResistanceTest {
         assertEquals(0.05, ChiSquareDistribution.upperSurvival(3.841, 1), 0.002);
         assertTrue(ChiSquareDistribution.upperSurvival(0.0, 1) > 0.99);
         assertTrue(ChiSquareDistribution.upperSurvival(20.0, 1) < 1e-4);
+        // Mid df sanity: χ²_50 critical ~67.5 at 5%
+        double p50 = ChiSquareDistribution.upperSurvival(67.505, 50);
+        assertEquals(0.05, p50, 0.01);
     }
 
     @Test
@@ -30,6 +34,19 @@ class SteganalysisResistanceTest {
 
         assertTrue(naiveBalance > coverBalance + 0.2,
                 "naive LSB should equalize PoVs (cover=" + coverBalance + ", naive=" + naiveBalance + ")");
+    }
+
+    @Test
+    void westfeldPValueRisesUnderNaiveLsbOnBiasedCover() {
+        BufferedImage cover = evenBiasedCover(128, 128, 5);
+        BufferedImage naive = NaiveLsbEmbedder.embed(cover, fillBits(cover, 0.95));
+
+        ChiSquareAnalyzer analyzer = new ChiSquareAnalyzer();
+        double coverP = analyzer.analyze(cover).pValue();
+        double naiveP = analyzer.analyze(naive).pValue();
+
+        assertTrue(naiveP > coverP,
+                "naive LSB should raise Westfeld p (cover=" + coverP + ", naive=" + naiveP + ")");
     }
 
     @Test
@@ -47,30 +64,40 @@ class SteganalysisResistanceTest {
     }
 
     @Test
-    void zhangTangRoundTripStillAnalyzableAndPerturbsLessOnPoVsThanFullNaiveLsb() {
+    void solveRateRecoversKnownQuadraticRoot() {
+        // Construct d's so the translated root x=0 ⇒ p=0.
+        // With x=0: c must be 0 ⇒ d0 == dMinus0; and a,b arbitrary with consistent zero root.
+        double rate = RsAnalyzer.solveRate(0.1, 0.1, -0.1, -0.1);
+        assertEquals(0.0, rate, 1e-9);
+    }
+
+    @Test
+    void flipFMinus1MatchesFridrichDefinition() {
+        assertEquals(-1, RsAnalyzer.flipFMinus1(0));
+        assertEquals(2, RsAnalyzer.flipFMinus1(1));
+        assertEquals(1, RsAnalyzer.flipFMinus1(2));
+        assertEquals(4, RsAnalyzer.flipFMinus1(3));
+        assertEquals(RsAnalyzer.flipF1(5) - 1, RsAnalyzer.flipFMinus1(4));
+    }
+
+    @Test
+    void zhangTangRoundTripAndPerturbsPoVsLessThanFullNaiveLsb() {
         BufferedImage cover = evenBiasedCover(128, 128, 21);
         byte[] payload = new byte[400];
         new Random(7).nextBytes(payload);
 
         BufferedImage zhangTang = new ZhangTangScheme(cover, "analysis-key").embedMessage(payload);
-        // Full-capacity naive LSB is the classic chi-square offender.
         BufferedImage naiveFull = NaiveLsbEmbedder.embed(cover, fillBits(cover, 0.9));
 
         byte[] recovered = new ZhangTangScheme(zhangTang, "analysis-key").extractMessage();
-        assertEquals(payload.length, recovered.length);
+        assertTrue(Arrays.equals(payload, recovered));
 
         ChiSquareAnalyzer chi = new ChiSquareAnalyzer();
-        RsAnalyzer rs = new RsAnalyzer();
-
-        ChiSquareAnalyzer.Result ztChi = chi.analyze(zhangTang);
-        RsAnalyzer.Result ztRs = rs.analyze(zhangTang);
-        assertTrue(Double.isFinite(ztChi.pValue()));
-        assertTrue(Double.isFinite(ztRs.estimatedRate()));
-
         double coverBalance = chi.analyze(cover).pairBalance();
-        double ztLift = Math.abs(ztChi.pairBalance() - coverBalance);
+        double ztLift = Math.abs(chi.analyze(zhangTang).pairBalance() - coverBalance);
         double naiveLift = Math.abs(chi.analyze(naiveFull).pairBalance() - coverBalance);
 
+        assertTrue(Double.isFinite(chi.analyze(zhangTang).pValue()));
         assertTrue(naiveLift > ztLift,
                 "full naive LSB should move PoV balance more than sparse Zhang-Tang (zt="
                         + ztLift + ", naive=" + naiveLift + ")");
