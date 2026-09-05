@@ -1,48 +1,41 @@
 package com.jxzheng.whisper.media;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Point;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-public class PointComparatorTest {
-    private final PointComparator testComparator = new PointComparator();
+class PointComparatorTest {
+
+    private final PointComparator comparator = new PointComparator();
 
     @Test
-    public void test_sameXDifferentY() {
+    void sameXDifferentY() {
         Point a = new Point(5, 10);
         Point b = new Point(5, 12);
-
-        int result = testComparator.compare(a, b);
-        assertEquals(-1, result);
+        assertTrue(comparator.compare(a, b) < 0);
     }
 
     @Test
-    public void test_sameYDifferentX() {
+    void sameYDifferentX() {
         Point a = new Point(6, 10);
         Point b = new Point(5, 10);
-
-        int result = testComparator.compare(a, b);
-        assertEquals(1, result);
+        assertTrue(comparator.compare(a, b) > 0);
     }
 
     @Test
-    public void test_sameXSameY() {
+    void sameXSameY() {
         Point a = new Point(100, 90);
         Point b = new Point(100, 90);
-
-        int result = testComparator.compare(a, b);
-        assertEquals(0, result);
+        assertEquals(0, comparator.compare(a, b));
     }
 
     @Test
-    public void test_differentXDifferentY() {
+    void differentXDifferentYOrdersByYFirst() {
         Point a = new Point(101, 85);
         Point b = new Point(100, 90);
-
-        int result = testComparator.compare(a, b);
-        assertEquals(-1, result);
+        assertTrue(comparator.compare(a, b) < 0);
     }
-
 }
