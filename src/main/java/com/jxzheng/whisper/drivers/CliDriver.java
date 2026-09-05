@@ -19,6 +19,7 @@ import org.apache.commons.cli.ParseException;
 import com.jxzheng.whisper.encryption.AesCipher;
 import com.jxzheng.whisper.encryption.CipherService;
 import com.jxzheng.whisper.exceptions.EncryptionException;
+import com.jxzheng.whisper.media.ImageFormats;
 import com.jxzheng.whisper.schemes.AbstractScheme;
 import com.jxzheng.whisper.schemes.ZhangTangScheme;
 
@@ -88,6 +89,12 @@ public class CliDriver {
         String message = resolveMessage(cl);
         boolean encrypt = cl.hasOption("encrypt");
 
+        ImageFormats.requireLosslessOutput(outputPath);
+        String coverWarning = ImageFormats.lossyInputWarning(inputPath);
+        if (coverWarning != null) {
+            System.err.println(coverWarning);
+        }
+
         BufferedImage cover = ImageIO.read(inputPath.toFile());
         if (cover == null) {
             throw new IOException("Could not read image: " + inputPath);
@@ -101,7 +108,7 @@ public class CliDriver {
         AbstractScheme scheme = createScheme(cl, cover, key);
         BufferedImage stego = scheme.embedMessage(payload);
 
-        String format = outputFormat(outputPath);
+        String format = ImageFormats.formatOf(outputPath);
         if (!ImageIO.write(stego, format, outputPath.toFile())) {
             throw new IOException("No ImageIO writer for format: " + format);
         }
@@ -183,15 +190,6 @@ public class CliDriver {
         return value;
     }
 
-    private static String outputFormat(Path outputPath) {
-        String name = outputPath.getFileName().toString();
-        int dot = name.lastIndexOf('.');
-        if (dot < 0 || dot == name.length() - 1) {
-            return "png";
-        }
-        return name.substring(dot + 1).toLowerCase(Locale.ROOT);
-    }
-
     private void printHelp() {
         helpFormatter.printHelp(
                 "whisper <embed|extract> [options]",
@@ -201,6 +199,9 @@ public class CliDriver {
                 Commands:
                   embed     Hide a message in a cover image
                   extract   Recover a message from a stego image
+
+                Stego output must be a lossless format (PNG recommended).
+                JPEG/WebP output is rejected because lossy compression destroys LSBs.
                 """,
                 options,
                 """
@@ -218,7 +219,8 @@ public class CliDriver {
         options.addOption(Option.builder("i").longOpt("input-file").hasArg().argName("file")
                 .desc("Input image file").build());
         options.addOption(Option.builder("o").longOpt("output-file").hasArg().argName("file")
-                .desc("Output file (stego image for embed, optional message file for extract)").build());
+                .desc("Output file (lossless stego image for embed — prefer .png; "
+                        + "optional message file for extract)").build());
         options.addOption(Option.builder("m").longOpt("message").hasArg().argName("text")
                 .desc("Message to embed (embed only)").build());
         options.addOption(Option.builder("f").longOpt("message-file").hasArg().argName("file")
