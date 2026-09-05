@@ -200,8 +200,8 @@ public class CliDriver {
                   embed     Hide a message in a cover image
                   extract   Recover a message from a stego image
 
-                Stego output must be a lossless format (PNG recommended).
-                JPEG/WebP output is rejected because lossy compression destroys LSBs.
+                Stego output must be PNG or BMP (allow-listed RGB containers).
+                JPEG/WebP/GIF and other formats are rejected because they destroy LSBs.
                 """,
                 options,
                 """

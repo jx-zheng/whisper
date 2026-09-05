@@ -1,7 +1,9 @@
 package com.jxzheng.whisper.media;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -25,28 +27,35 @@ class ImageFormatsTest {
     }
 
     @Test
-    void treatsPngAsLossless() {
-        assertTrue(ImageFormats.isLossless("png"));
+    void treatsPngAndBmpAsSafeStegoOutput() {
+        assertTrue(ImageFormats.isSafeStegoOutput("png"));
+        assertTrue(ImageFormats.isSafeStegoOutput("bmp"));
+        assertFalse(ImageFormats.isSafeStegoOutput("gif"));
         assertFalse(ImageFormats.isLossy("png"));
     }
 
     @Test
-    void rejectsLossyEmbedOutput() {
-        IllegalArgumentException ex = assertThrows(
-                IllegalArgumentException.class,
-                () -> ImageFormats.requireLosslessOutput(Path.of("out.jpg")));
-        assertTrue(ex.getMessage().contains("PNG"));
+    void rejectsLossyAndUnsafeEmbedOutputs() {
+        for (String name : new String[] {"out.jpg", "out.jpeg", "out.webp", "out.gif", "out.xyz"}) {
+            IllegalArgumentException ex = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> ImageFormats.requireLosslessOutput(Path.of(name)),
+                    name);
+            assertTrue(ex.getMessage().contains("PNG") || ex.getMessage().contains("BMP"), ex.getMessage());
+        }
     }
 
     @Test
-    void allowsPngEmbedOutput() {
-        ImageFormats.requireLosslessOutput(Path.of("out.png"));
+    void allowsPngAndBmpEmbedOutput() {
+        assertDoesNotThrow(() -> ImageFormats.requireLosslessOutput(Path.of("out.png")));
+        assertDoesNotThrow(() -> ImageFormats.requireLosslessOutput(Path.of("out.bmp")));
     }
 
     @Test
     void warnsOnLossyCover() {
         String warning = ImageFormats.lossyInputWarning(Path.of("cover.jpeg"));
-        assertTrue(warning != null && warning.contains("lossy"));
+        assertNotNull(warning);
+        assertTrue(warning.contains("lossy"));
     }
 
     @Test
