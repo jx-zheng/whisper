@@ -60,7 +60,7 @@ Prefer lossless formats such as PNG for the stego output. Lossy formats (e.g. JP
 
 ## Statistical checks
 
-`analyze` runs Westfeld–Pfitzmann chi-square and Fridrich RS tests. Zhang–Tang is designed to resist these better than naive LSB replacement — compare cover vs stego for a relative reading (absolute thresholds vary by image).
+`analyze` runs Westfeld–Pfitzmann chi-square and Fridrich RS heuristics. Treat them as relative diagnostics (cover vs stego), not calibrated detectors — absolute thresholds vary by image.
 
 ## Testing
 
