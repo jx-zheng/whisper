@@ -40,8 +40,7 @@ import com.jxzheng.whisper.schemes.adaptive.UerdStcScheme;
 import com.jxzheng.whisper.schemes.framing.ParityFraming;
 
 /**
- * Hide and reveal for the v2 envelope. Legacy Zhang–Tang bytes stay on
- * {@link StegoOperations}.
+ * Hide and reveal for the v2 envelope. Zhang–Tang embed lives in the tests.
  */
 public final class PayloadOps {
 
@@ -151,7 +150,7 @@ public final class PayloadOps {
         EmbedOptions options = new EmbedOptions(request.preset(), request.keepMetadata(), outputFormat);
         return switch (scheme) {
             case "hill-stc" -> {
-                RasterImage image = "bmp".equals(format) ? BmpCodec.read(cover) : pngOrConvert(cover);
+                RasterImage image = coverRaster(cover);
                 yield hill.embed(Carrier.raster(image, cover, format), envelope, visit, options).encoded();
             }
             case "uerd-stc" -> uerd.embed(Carrier.encoded(cover, "jpg"), envelope, visit, options).encoded();
@@ -364,11 +363,101 @@ public final class PayloadOps {
                 outcome.schemeId(), outcome.cipher(), false, outcome.reencoded());
     }
 
-    private static RasterImage pngOrConvert(byte[] cover) throws Exception {
-        if (needsRasterConversion(cover)) {
-            return PngCodec.decode(CoverConverter.toEightBitPng(cover));
+    /**
+     * Bytes of content the cover can hold after the payload frame header.
+     * Negative means the cover could not be measured.
+     */
+    public static int shownCapacity(byte[] cover, String schemeId, RatePreset preset, String name, String mime) {
+        if (cover == null) {
+            return -1;
         }
-        return PngCodec.decode(cover);
+        String scheme = SchemeRegistry.canonical(schemeId, sniff(cover));
+        double rate = preset == null ? RatePreset.STANDARD.rate() : preset.rate();
+        int raw;
+        if ("uerd-stc".equals(scheme)) {
+            try {
+                int nzac = JpegCoefficients.parse(cover).nzac();
+                raw = ParityFraming.userBudget(nzac, nzac, rate);
+            } catch (RuntimeException e) {
+                return -1;
+            }
+        } else {
+            int pixels = pixelCount(cover);
+            if (pixels <= 0) {
+                return -1;
+            }
+            raw = ParityFraming.userBudget(pixels, pixels, Math.min(rate, HillStcScheme.HARD_RATE));
+        }
+        int nameBytes = 0;
+        if (name != null && !name.isEmpty()) {
+            nameBytes = Math.min(PayloadFrame.MAX_NAME, name.getBytes(StandardCharsets.UTF_8).length);
+        }
+        int mimeBytes = mime == null ? 0 : mime.length();
+        return Math.max(0, raw - (46 + nameBytes + mimeBytes));
+    }
+
+    /** 24/32-bit BI_RGB BMP and 8-bit PNG stay as they are. Every other raster is converted. */
+    static RasterImage coverRaster(byte[] cover) throws java.io.IOException {
+        if (directBmp(cover)) {
+            return BmpCodec.read(cover);
+        }
+        if (pngSignature(cover) && !needsRasterConversion(cover)) {
+            return PngCodec.decode(cover);
+        }
+        return PngCodec.decode(CoverConverter.toEightBitPng(cover));
+    }
+
+    private static int pixelCount(byte[] cover) {
+        if (pngSignature(cover) && cover.length >= 24) {
+            int width = be32(cover, 16);
+            int height = be32(cover, 20);
+            if (width > 0 && height > 0 && (long) width * height <= Integer.MAX_VALUE) {
+                return width * height;
+            }
+        }
+        if (cover.length >= 26 && cover[0] == 'B' && cover[1] == 'M') {
+            int width = le32(cover, 18);
+            int height = Math.abs(le32(cover, 22));
+            if (width > 0 && height > 0 && (long) width * height <= Integer.MAX_VALUE) {
+                return width * height;
+            }
+        }
+        try {
+            var image = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(cover));
+            if (image == null || image.getWidth() <= 0 || image.getHeight() <= 0) {
+                return -1;
+            }
+            long pixels = (long) image.getWidth() * image.getHeight();
+            return pixels > Integer.MAX_VALUE ? -1 : (int) pixels;
+        } catch (java.io.IOException e) {
+            return -1;
+        }
+    }
+
+    private static boolean directBmp(byte[] file) {
+        if (file == null || file.length < 54 || file[0] != 'B' || file[1] != 'M') {
+            return false;
+        }
+        int dib = le32(file, 14);
+        if (dib < 40) {
+            return false;
+        }
+        int planes = (file[26] & 0xff) | ((file[27] & 0xff) << 8);
+        int bits = (file[28] & 0xff) | ((file[29] & 0xff) << 8);
+        int compression = le32(file, 30);
+        return planes == 1 && compression == 0 && (bits == 24 || bits == 32);
+    }
+
+    private static boolean pngSignature(byte[] file) {
+        return file != null && file.length >= 8 && file[0] == (byte) 0x89 && file[1] == 'P' && file[2] == 'N' && file[3] == 'G';
+    }
+
+    private static int be32(byte[] b, int i) {
+        return ((b[i] & 0xff) << 24) | ((b[i + 1] & 0xff) << 16) | ((b[i + 2] & 0xff) << 8) | (b[i + 3] & 0xff);
+    }
+
+    private static int le32(byte[] b, int i) {
+        return (b[i] & 0xff) | ((b[i + 1] & 0xff) << 8) | ((b[i + 2] & 0xff) << 16) | ((b[i + 3] & 0xff) << 24);
     }
 
     /** Indexed, interlaced, and non-8-bit PNGs are rewritten before HILL. */

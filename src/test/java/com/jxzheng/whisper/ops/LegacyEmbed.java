@@ -21,10 +21,13 @@ import com.jxzheng.whisper.schemes.ZhangTangScheme;
 /** Test-only Zhang–Tang embed. Production code does not create 0.9 payloads. */
 public final class LegacyEmbed {
 
+    public record Result(BufferedImage image, int payloadBytes) {
+    }
+
     private LegacyEmbed() {
     }
 
-    public static StegoOperations.EmbedResult embed(
+    public static Result embed(
             BufferedImage cover,
             byte[] message,
             String stegoKey,
@@ -33,7 +36,7 @@ public final class LegacyEmbed {
         return embed(cover, message, stegoKey, encrypt, encryptKey, "zhang-tang", "aes");
     }
 
-    public static StegoOperations.EmbedResult embed(
+    public static Result embed(
             BufferedImage cover,
             byte[] message,
             String stegoKey,
@@ -60,7 +63,7 @@ public final class LegacyEmbed {
                     "Message exceeds max message length of " + AbstractScheme.MAX_PAYLOAD_LENGTH);
         }
         BufferedImage stego = new ZhangTangScheme(cover, walkKey).embedMessage(payload);
-        return new StegoOperations.EmbedResult(stego, payload.length);
+        return new Result(stego, payload.length);
     }
 
     private static MessageTooLongException capacityError(int width, int height, int plaintextBytes, boolean encrypt) {

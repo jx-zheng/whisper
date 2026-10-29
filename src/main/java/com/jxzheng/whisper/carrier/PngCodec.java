@@ -59,8 +59,12 @@ public final class PngCodec {
                     image.samples = inflate(image, idat.toByteArray());
                     return image;
                 }
-                case "PLTE" -> throw new IllegalArgumentException(
-                        "png: paletted images are not supported; convert to RGB or greyscale");
+                case "PLTE" -> {
+                    if (image.colorType == 3) {
+                        throw new IllegalArgumentException(
+                                "png: paletted images are not supported; convert to RGB or greyscale");
+                    }
+                }
                 default -> image.ancillary.add(new RasterImage.Chunk(type, Arrays.copyOfRange(file, dataAt, dataAt + n)));
             }
         }

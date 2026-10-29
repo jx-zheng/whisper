@@ -237,9 +237,10 @@ public class CliDriver {
         options.addOption(Option.builder().longOpt("image").hasArg().argName("file")
                 .desc("Image to hide").build());
         options.addOption(Option.builder().longOpt("fit-quality").hasArg().argName("q")
-                .desc("Re-encode a hidden image as JPEG at this quality (40-95)").build());
+                .desc("Starting JPEG quality (40-95). Steps down, then shrinks the longest edge, "
+                        + "until the hidden image fits the cover").build());
         options.addOption(Option.builder().longOpt("fit-max-edge").hasArg().argName("px")
-                .desc("Longest edge of a re-encoded hidden image").build());
+                .desc("Starting longest edge of a fitted hidden image. Shrinks further until it fits").build());
         options.addOption(Option.builder().longOpt("preset").hasArg().argName("name")
                 .desc("Stealth preset: standard, low, or paranoid").build());
         options.addOption(Option.builder().longOpt("kdf").hasArg().argName("name")
@@ -288,7 +289,10 @@ public class CliDriver {
             if (cl.hasOption("fit-quality") || cl.hasOption("fit-max-edge")) {
                 int quality = Integer.parseInt(cl.getOptionValue("fit-quality", "75"));
                 int edge = Integer.parseInt(cl.getOptionValue("fit-max-edge", "0"));
-                ImageFit.Result fit = ImageFit.fit(content, quality, edge);
+                int room = PayloadOps.shownCapacity(
+                        Files.readAllBytes(input), scheme,
+                        RatePreset.fromId(cl.getOptionValue("preset", "standard")), name, mime);
+                ImageFit.Result fit = ImageFit.fit(content, quality, edge, room, name);
                 content = fit.bytes();
                 reencoded = true;
                 mime = "image/jpeg";

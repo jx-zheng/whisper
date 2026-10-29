@@ -27,9 +27,6 @@ public final class StegoOperations {
         return CipherRegistry.shared().ids();
     }
 
-    public record EmbedResult(BufferedImage image, int payloadBytes) {
-    }
-
     public record Report(ChiSquareAnalyzer.Result chiSquare, RsAnalyzer.Result rs) {
     }
 

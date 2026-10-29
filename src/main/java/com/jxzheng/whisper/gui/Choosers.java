@@ -29,8 +29,43 @@ final class Choosers {
         FileChooser chooser = base(title);
         chooser.getExtensionFilters().addAll(
                 new FileChooser.ExtensionFilter("PNG image", "*.png"),
+                new FileChooser.ExtensionFilter("JPEG image", "*.jpg", "*.jpeg"),
                 new FileChooser.ExtensionFilter("BMP image", "*.bmp"));
         return chooser;
+    }
+
+    static void selectStegoFilter(FileChooser chooser, String extension) {
+        String want = switch (extension == null ? "" : extension.toLowerCase(Locale.ROOT)) {
+            case "jpg", "jpeg" -> "jpeg";
+            case "bmp" -> "bmp";
+            default -> "png";
+        };
+        for (FileChooser.ExtensionFilter filter : chooser.getExtensionFilters()) {
+            if (filter.getDescription().toLowerCase(Locale.ROOT).contains(want)) {
+                chooser.setSelectedExtensionFilter(filter);
+                return;
+            }
+        }
+    }
+
+    static String saveExtension(String description) {
+        if (description == null) {
+            return "png";
+        }
+        String text = description.toLowerCase(Locale.ROOT);
+        if (text.contains("bmp")) {
+            return "bmp";
+        }
+        if (text.contains("jpeg") || text.contains("jpg")) {
+            return "jpg";
+        }
+        if (text.contains("text")) {
+            return "txt";
+        }
+        if (text.contains("binary")) {
+            return "bin";
+        }
+        return "png";
     }
 
     static FileChooser messageOpen(String title) {
@@ -82,16 +117,7 @@ final class Choosers {
         if (filter == null || filter.getDescription().startsWith("All")) {
             return path;
         }
-        String description = filter.getDescription().toLowerCase(Locale.ROOT);
-        String extension = "png";
-        if (description.contains("bmp")) {
-            extension = "bmp";
-        } else if (description.contains("text")) {
-            extension = "txt";
-        } else if (description.contains("binary")) {
-            extension = "bin";
-        }
-        return path.resolveSibling(name + "." + extension);
+        return path.resolveSibling(name + "." + saveExtension(filter.getDescription()));
     }
 
     static void remember(Path path) {

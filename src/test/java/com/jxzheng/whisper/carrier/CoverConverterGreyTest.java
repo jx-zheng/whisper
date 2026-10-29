@@ -1,6 +1,8 @@
 package com.jxzheng.whisper.carrier;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -21,6 +23,26 @@ class CoverConverterGreyTest {
     }
 
     @Test
+    void greyTransparencyBecomesAlphaAndColorimetryIsKept() throws Exception {
+        byte[] gama = {0, 0, (byte) 0xb1, (byte) 0x8f};
+        byte[] srgb = {0};
+        byte[] iccp = iccpChunk();
+        byte[] trns = {0, 0};
+        byte[] png = greyPng(2, 8, new byte[] {0, 0, (byte) 0xff}, gama, srgb, iccp, trns);
+        byte[] eight = CoverConverter.toEightBitPng(png);
+        RasterImage image = PngCodec.decode(eight);
+        assertEquals(4, image.colorType);
+        assertEquals(0, image.samples[0] & 0xff);
+        assertEquals(0, image.samples[1] & 0xff);
+        assertEquals(255, image.samples[2] & 0xff);
+        assertEquals(255, image.samples[3] & 0xff);
+        assertArrayEquals(gama, chunk(image, "gAMA"));
+        assertArrayEquals(srgb, chunk(image, "sRGB"));
+        assertArrayEquals(iccp, chunk(image, "iCCP"));
+        assertNull(chunk(image, "tRNS"));
+    }
+
+    @Test
     void oneBitGreyScalesToFullRange() throws Exception {
         byte[] png = greyPng(8, 1, new byte[] {0, (byte) 0x80});
         byte[] eight = CoverConverter.toEightBitPng(png);
@@ -30,8 +52,8 @@ class CoverConverterGreyTest {
         assertEquals(0, image.samples[1] & 0xff);
     }
 
-    /** One row, eight pixels. {@code samples} includes the filter byte. */
-    private static byte[] greyPng(int width, int bitDepth, byte[] filteredRow) {
+    /** One row. {@code filteredRow} includes the filter byte. Extra chunks sit before IDAT. */
+    private static byte[] greyPng(int width, int bitDepth, byte[] filteredRow, byte[]... extras) {
         byte[] ihdr = new byte[13];
         ihdr[0] = (byte) (width >>> 24);
         ihdr[1] = (byte) (width >>> 16);
@@ -42,9 +64,40 @@ class CoverConverterGreyTest {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         out.writeBytes(new byte[] {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'});
         chunk(out, "IHDR", ihdr);
+        if (extras.length > 0) {
+            chunk(out, "gAMA", extras[0]);
+        }
+        if (extras.length > 1) {
+            chunk(out, "sRGB", extras[1]);
+        }
+        if (extras.length > 2) {
+            chunk(out, "iCCP", extras[2]);
+        }
+        if (extras.length > 3) {
+            chunk(out, "tRNS", extras[3]);
+        }
         chunk(out, "IDAT", deflate(filteredRow));
         chunk(out, "IEND", new byte[0]);
         return out.toByteArray();
+    }
+
+    private static byte[] chunk(RasterImage image, String type) {
+        for (RasterImage.Chunk chunk : image.ancillary) {
+            if (type.equals(chunk.type())) {
+                return chunk.data();
+            }
+        }
+        return null;
+    }
+
+    private static byte[] iccpChunk() {
+        byte[] name = "test\u0000".getBytes(StandardCharsets.US_ASCII);
+        byte[] body = deflate(new byte[] {1, 2, 3, 4});
+        byte[] out = new byte[name.length + 1 + body.length];
+        System.arraycopy(name, 0, out, 0, name.length);
+        out[name.length] = 0;
+        System.arraycopy(body, 0, out, name.length + 1, body.length);
+        return out;
     }
 
     private static byte[] deflate(byte[] raw) {

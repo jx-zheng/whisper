@@ -291,7 +291,9 @@ final class EmbedPane extends BorderPane {
 
     private void chooseOutput() {
         var chooser = Choosers.stegoSave("Save stego image");
-        Choosers.seed(chooser, outputField.getText(), suggestionName(pathFrom(coverField.getText())));
+        Path cover = pathFrom(coverField.getText());
+        Choosers.selectStegoFilter(chooser, outputExtension(cover));
+        Choosers.seed(chooser, outputField.getText(), suggestionName(cover));
         Path path = Choosers.chooseSave(chooser, getScene() == null ? null : getScene().getWindow());
         if (path != null) {
             outputField.setText(path.toString());
@@ -489,7 +491,12 @@ final class EmbedPane extends BorderPane {
             name = job.messageFile().getFileName() == null ? "image" : job.messageFile().getFileName().toString();
             mime = MimeSniffer.mime(content);
             if (job.fit()) {
-                ImageFit.Result fit = ImageFit.fit(content, 75, 1024);
+                int room = job.shownCapacity();
+                if (room < 0) {
+                    room = PayloadOps.shownCapacity(
+                            Files.readAllBytes(job.cover()), job.scheme(), RatePreset.fromId(job.preset()), name, mime);
+                }
+                ImageFit.Result fit = ImageFit.fit(content, 75, 1024, room, name);
                 content = fit.bytes();
                 reencoded = true;
                 mime = "image/jpeg";
