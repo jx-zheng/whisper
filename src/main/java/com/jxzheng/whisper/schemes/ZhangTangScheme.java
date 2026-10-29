@@ -3,9 +3,9 @@ package com.jxzheng.whisper.schemes;
 import java.awt.Color;
 import java.awt.Point;
 import java.awt.image.BufferedImage;
-import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -15,6 +15,7 @@ import java.util.Set;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
+import com.jxzheng.whisper.crypto.KeyedPrng;
 import com.jxzheng.whisper.exceptions.CorruptOrInvalidStegoImageException;
 import com.jxzheng.whisper.exceptions.MessageTooLongException;
 import com.jxzheng.whisper.media.PointComparator;
@@ -108,17 +109,22 @@ public class ZhangTangScheme extends AbstractScheme {
     /**
      * Truncated HMAC-SHA256 over the length bytes, keyed by the stego passphrase.
      * Two bytes give 1/65536 false-accept under a wrong key (vs 1/256 for a lone STX).
+     * An empty passphrase uses the public default walk's PBKDF2 key, because the
+     * JCE rejects a zero-length HMAC key.
      */
     private byte[] headerMac(byte lengthHigh, byte lengthLow) {
+        byte[] macKey = KeyedPrng.headerMacKey(getKey());
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(getKey().getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            mac.init(new SecretKeySpec(macKey, "HmacSHA256"));
             mac.update(lengthHigh);
             mac.update(lengthLow);
             byte[] full = mac.doFinal();
             return new byte[] {full[0], full[1]};
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("HMAC-SHA256 unavailable", e);
+        } finally {
+            Arrays.fill(macKey, (byte) 0);
         }
     }
 

@@ -16,6 +16,7 @@ import javafx.scene.input.TransferMode;
 import javafx.scene.Node;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.TextAlignment;
@@ -33,31 +34,34 @@ final class ImageCard extends VBox {
     };
     private Runnable onBrowse = () -> {
     };
+    private boolean adapted;
+    private boolean adaptedStacked;
 
     ImageCard() {
         super(8);
         getStyleClass().add("card");
         frame.getStyleClass().add("preview-frame");
-        frame.setMinHeight(200);
-        frame.setPrefHeight(230);
+        frame.setMinWidth(0);
+        frame.setMinHeight(140);
+        frame.setPrefHeight(200);
+        frame.setMaxWidth(Double.MAX_VALUE);
+        setMinWidth(0);
         frame.setAlignment(Pos.CENTER);
         frame.setCursor(Cursor.HAND);
         imageView.setPreserveRatio(true);
-        imageView.setFitHeight(210);
-        imageView.setFitWidth(320);
+        imageView.setFitHeight(180);
+        imageView.setFitWidth(280);
         imageView.setSmooth(true);
         imageView.setMouseTransparent(true);
-        frame.widthProperty().addListener((obs, previous, width) -> {
-            if (width.doubleValue() > 48) {
-                imageView.setFitWidth(width.doubleValue() - 24);
-            }
-        });
+        frame.widthProperty().addListener((obs, previous, width) -> fitPreview(width.doubleValue(), frame.getHeight()));
+        frame.heightProperty().addListener((obs, previous, height) -> fitPreview(frame.getWidth(), height.doubleValue()));
         placeholder.getStyleClass().add("hint");
         placeholder.setWrapText(true);
         placeholder.setMouseTransparent(true);
         placeholder.setTextAlignment(TextAlignment.CENTER);
         placeholder.setAlignment(Pos.CENTER);
-        placeholder.setMaxWidth(260);
+        placeholder.setMinWidth(0);
+        placeholder.setMaxWidth(220);
         frame.getChildren().addAll(imageView, placeholder);
 
         caption.getStyleClass().add("card-title");
@@ -70,6 +74,7 @@ final class ImageCard extends VBox {
         warning.setManaged(false);
         warning.maxWidthProperty().bind(widthProperty());
 
+        browse.setMinWidth(Region.USE_PREF_SIZE);
         browse.setOnAction(event -> onBrowse.run());
         frame.setOnMouseClicked(event -> {
             if (event.getButton() == MouseButton.PRIMARY) {
@@ -85,6 +90,52 @@ final class ImageCard extends VBox {
         frame.setOnDragDropped(this::dropped);
 
         getChildren().addAll(frame, caption, detail, warning, browse);
+    }
+
+    /**
+     * Stacked layout keeps a short preview so the form stays on screen.
+     * Side by side, the preview grows with the column and with leftover height.
+     * Callers should skip this unless the mode flipped or the column width moved by a pixel.
+     */
+    void adapt(boolean stacked, double columnWidth) {
+        if (!adapted || adaptedStacked != stacked) {
+            adapted = true;
+            adaptedStacked = stacked;
+            if (stacked) {
+                VBox.setVgrow(frame, Priority.NEVER);
+                frame.setMinHeight(120);
+                frame.setPrefHeight(168);
+                frame.setMaxHeight(168);
+            } else {
+                VBox.setVgrow(frame, Priority.ALWAYS);
+                frame.setMaxHeight(Double.MAX_VALUE);
+                frame.setMinHeight(160);
+                applySideHeight(columnWidth);
+            }
+            return;
+        }
+        if (!stacked) {
+            applySideHeight(columnWidth);
+        }
+    }
+
+    private void applySideHeight(double columnWidth) {
+        double preferred = columnWidth > 0 ? columnWidth * 0.72 : 220;
+        double height = Math.min(340, Math.max(200, preferred));
+        if (Math.abs(frame.getPrefHeight() - height) >= 1) {
+            frame.setPrefHeight(height);
+        }
+    }
+
+    private void fitPreview(double width, double height) {
+        if (width > 48) {
+            double inner = width - 24;
+            imageView.setFitWidth(inner);
+            placeholder.setMaxWidth(Math.max(80, inner));
+        }
+        if (height > 32) {
+            imageView.setFitHeight(height - 16);
+        }
     }
 
     void setOnBrowse(Runnable onBrowse) {
@@ -123,6 +174,7 @@ final class ImageCard extends VBox {
      * Shows a labeled, editable path beside the browse button. Clicking the preview still browses.
      */
     void attachPath(String labelText, javafx.scene.control.TextField field) {
+        field.setMinWidth(0);
         field.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(field, Priority.ALWAYS);
         HBox row = new HBox(8, field, browse);

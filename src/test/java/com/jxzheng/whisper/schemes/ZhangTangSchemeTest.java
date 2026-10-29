@@ -70,6 +70,16 @@ class ZhangTangSchemeTest {
     }
 
     @Test
+    void emptyKeyRoundTripsAndRejectsARealKey() {
+        BufferedImage cover = randomImage(48, 48, 5);
+        byte[] message = "blank".getBytes(StandardCharsets.UTF_8);
+        BufferedImage stego = new ZhangTangScheme(cover, "").embedMessage(message);
+        assertArrayEquals(message, new ZhangTangScheme(stego, "").extractMessage());
+        assertThrows(CorruptOrInvalidStegoImageException.class,
+                () -> new ZhangTangScheme(stego, "wrong-key").extractMessage());
+    }
+
+    @Test
     void wrongKeyFailsExtraction() {
         BufferedImage cover = randomImage(64, 64, 1);
         BufferedImage stego = new ZhangTangScheme(cover, "right-key")

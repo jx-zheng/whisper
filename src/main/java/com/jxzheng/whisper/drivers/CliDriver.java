@@ -26,8 +26,8 @@ import com.jxzheng.whisper.ops.StegoOperations.Report;
  * Command-line front-end for embed, extract, and statistical analysis.
  *
  * <pre>
- *   whisper embed   -i cover.png -o stego.png -m "secret" -k passphrase [-e]
- *   whisper extract -i stego.png -k passphrase [-e] [-o message.txt]
+ *   whisper embed   -i cover.png -o stego.png -m "secret" [-k stego-key] [-e -E encrypt-key]
+ *   whisper extract -i stego.png [-k stego-key] [-e -E encrypt-key] [-o message.txt]
  *   whisper analyze -i stego.png
  * </pre>
  */
@@ -84,9 +84,10 @@ public class CliDriver {
 
         Path inputPath = requiredPath(cl, "input-file");
         Path outputPath = requiredPath(cl, "output-file");
-        String key = requiredKey(cl);
+        String stegoKey = stegoKey(cl);
         byte[] message = resolveMessageBytes(cl);
         boolean encrypt = cl.hasOption("encrypt");
+        String encryptKey = encryptKey(cl, encrypt);
 
         ImageFormats.requireLosslessOutput(outputPath);
         String coverWarning = ImageFormats.lossyInputWarning(inputPath);
@@ -98,8 +99,9 @@ public class CliDriver {
         EmbedResult result = operations.embed(
                 cover,
                 message,
-                key,
+                stegoKey,
                 encrypt,
+                encryptKey,
                 cl.getOptionValue("scheme", StegoOperations.DEFAULT_SCHEME),
                 cl.getOptionValue("cipher", StegoOperations.DEFAULT_CIPHER));
         StegoOperations.writeStego(result.image(), outputPath);
@@ -115,14 +117,16 @@ public class CliDriver {
         }
 
         Path inputPath = requiredPath(cl, "input-file");
-        String key = requiredKey(cl);
+        String stegoKey = stegoKey(cl);
         boolean decrypt = cl.hasOption("encrypt");
+        String encryptKey = encryptKey(cl, decrypt);
 
         BufferedImage stego = StegoOperations.readImage(inputPath);
         byte[] payload = operations.extract(
                 stego,
-                key,
+                stegoKey,
                 decrypt,
+                encryptKey,
                 cl.getOptionValue("scheme", StegoOperations.DEFAULT_SCHEME),
                 cl.getOptionValue("cipher", StegoOperations.DEFAULT_CIPHER));
 
@@ -192,13 +196,36 @@ public class CliDriver {
         return value;
     }
 
-    /** Spaces are a real passphrase. Only a missing or empty {@code -k} is rejected. */
-    private static String requiredKey(CommandLine cl) {
-        String value = cl.getOptionValue("key");
-        if (value == null || value.isEmpty()) {
-            throw new IllegalArgumentException("Missing required option: --key");
+    /**
+     * Spaces are a real stego key. A missing or empty {@code -k} selects the public
+     * default walk (PBKDF2 of the empty string).
+     */
+    private static String stegoKey(CommandLine cl) {
+        if (!cl.hasOption("key")) {
+            return "";
         }
-        return value;
+        String value = cl.getOptionValue("key");
+        return value == null ? "" : value;
+    }
+
+    /**
+     * Never falls back to {@code -k}. A missing or empty {@code -E} is the public
+     * empty-string AES-GCM key. Omitting the flag prints a warning because that
+     * key authenticates the payload and does not keep it confidential.
+     */
+    private static String encryptKey(CommandLine cl, boolean encrypt) {
+        if (!encrypt) {
+            return null;
+        }
+        if (!cl.hasOption("encrypt-key")) {
+            System.err.println(
+                    "Warning: --encrypt-key was omitted. Using the public empty-string AES-GCM key. "
+                            + "The payload is authenticated but not confidential. "
+                            + "The stego key (-k) is not used as the encryption passphrase.");
+            return "";
+        }
+        String value = cl.getOptionValue("encrypt-key");
+        return value == null ? "" : value;
     }
 
     private void printHelp() {
@@ -217,9 +244,18 @@ public class CliDriver {
                 """,
                 options,
                 """
+                The stego key (-k) and the encryption passphrase (-E) are independent.
+                Omit -k, or pass an empty value, for the public empty-string pixel walk.
+                -e encrypts only the hidden message and does not reuse -k.
+                Omit -E, or pass an empty value, for the public empty-string AES-GCM key.
+                That key authenticates the payload and is not confidential. Omitting -E prints a warning.
+                The stego file stays a normal PNG or BMP.
+
                 Examples:
-                  whisper embed -i cover.png -o stego.png -m "hello" -k secret
-                  whisper extract -i stego.png -k secret
+                  whisper embed -i cover.png -o stego.png -m "hello"
+                  whisper embed -i cover.png -o stego.png -m "hello" -k walk-secret -e -E cipher-secret
+                  whisper extract -i stego.png
+                  whisper extract -i stego.png -k walk-secret -e -E cipher-secret
                   whisper analyze -i stego.png
                 """,
                 true);
@@ -241,9 +277,16 @@ public class CliDriver {
         options.addOption(Option.builder("c").longOpt("cipher").hasArg().argName("name")
                 .desc("Cipher to use with -e (default: aes)").build());
         options.addOption(Option.builder("e").longOpt("encrypt")
-                .desc("Encrypt message payload before embed / decrypt after extract").build());
+                .desc("Encrypt the message payload before embed / decrypt after extract. "
+                        + "Does not encrypt the image. Does not reuse -k. "
+                        + "Without --encrypt-key, uses the public empty-string AES-GCM key.").build());
         options.addOption(Option.builder("k").longOpt("key").hasArg().argName("key")
-                .desc("Steganographic key (also used as cipher passphrase when -e is set)").build());
+                .desc("Stego / pixel-walk key. Optional. Omitted or empty uses the public "
+                        + "empty-string walk.").build());
+        options.addOption(Option.builder("E").longOpt("encrypt-key").hasArg().argName("key")
+                .desc("Encryption passphrase (PBKDF2 to AES-GCM) for the payload only. "
+                        + "Not copied from -k. Omitted or empty is the public empty-string cipher key. "
+                        + "Omitting it with -e prints a warning.").build());
         options.addOption(Option.builder("h").longOpt("help").desc("Show usage information").build());
         return options;
     }

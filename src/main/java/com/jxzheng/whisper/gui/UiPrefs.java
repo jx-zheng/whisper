@@ -11,22 +11,6 @@ final class UiPrefs {
     private UiPrefs() {
     }
 
-    static boolean darkTheme() {
-        try {
-            return PREFS.getBoolean("dark", false);
-        } catch (RuntimeException ex) {
-            return false;
-        }
-    }
-
-    static void darkTheme(boolean dark) {
-        try {
-            PREFS.putBoolean("dark", dark);
-        } catch (RuntimeException ignored) {
-            // Preferences can be unavailable in locked-down environments.
-        }
-    }
-
     static Path lastDirectory() {
         try {
             String stored = PREFS.get("lastDir", System.getProperty("user.home", "."));

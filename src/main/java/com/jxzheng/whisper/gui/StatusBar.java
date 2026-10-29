@@ -31,8 +31,14 @@ final class StatusBar extends HBox {
         setAlignment(Pos.CENTER_LEFT);
         dot.getStyleClass().add("status-dot");
         message.setWrapText(true);
+        message.setMinWidth(0);
         message.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(message, Priority.ALWAYS);
+        widthProperty().addListener((obs, previous, width) -> {
+            if (width.doubleValue() > 0) {
+                message.setMaxWidth(Math.max(80, width.doubleValue() - 48));
+            }
+        });
         progress.setPrefSize(16, 16);
         progress.setMinSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
         progress.setMaxSize(16, 16);

@@ -23,9 +23,9 @@ import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
 final class EmbedPane extends BorderPane {
@@ -40,7 +40,8 @@ final class EmbedPane extends BorderPane {
     private final TextField messageFileField = new TextField();
     private final RadioButton textMode = new RadioButton("Text");
     private final RadioButton fileMode = new RadioButton("File");
-    private final PassphraseField passphrase = new PassphraseField();
+    private final PassphraseField stegoPassphrase = new PassphraseField("Optional — blank uses the public walk");
+    private final PassphraseField encryptPassphrase = new PassphraseField("Optional — blank uses the public cipher key");
     private final CheckBox encryptBox = new CheckBox("Encrypt payload (AES-GCM)");
     private final ComboBox<String> schemeBox;
     private final ComboBox<String> cipherBox;
@@ -59,7 +60,6 @@ final class EmbedPane extends BorderPane {
     private BufferedImage coverPreview;
     private BufferedImage stegoPreview;
     private int capacity = Integer.MIN_VALUE;
-    private boolean arranged;
     private boolean stacked;
 
     /** Last output path this pane filled in from the cover name. A typed path is left alone. */
@@ -68,7 +68,8 @@ final class EmbedPane extends BorderPane {
     private String confirmedOutput = "";
 
     private Path usedOutput;
-    private String usedKey = "";
+    private String usedStegoKey = "";
+    private String usedEncryptKey = "";
     private boolean usedEncrypt;
     private String usedScheme = StegoOperations.DEFAULT_SCHEME;
     private String usedCipher = StegoOperations.DEFAULT_CIPHER;
@@ -108,31 +109,48 @@ final class EmbedPane extends BorderPane {
         fileBox.managedProperty().bind(fileMode.selectedProperty());
         fileBox.visibleProperty().bind(fileMode.selectedProperty());
 
-        VBox messageCard = card("Message", new VBox(8,
-                new HBox(16, textMode, fileMode),
-                messageArea,
-                fileBox));
+        messageArea.setMinWidth(0);
+        messageArea.setMaxHeight(Double.MAX_VALUE);
+        VBox messageBody = new VBox(8, new HBox(16, textMode, fileMode), messageArea, fileBox);
+        VBox.setVgrow(messageArea, Priority.ALWAYS);
+        VBox messageCard = card("Message", messageBody);
+        VBox.setVgrow(messageBody, Priority.ALWAYS);
         VBox schemeField = Forms.field("Scheme", schemeBox);
         VBox cipherField = Forms.field("Cipher", cipherBox);
         HBox.setHgrow(schemeField, Priority.ALWAYS);
         HBox.setHgrow(cipherField, Priority.ALWAYS);
+        schemeField.setMinWidth(0);
+        cipherField.setMinWidth(0);
         schemeField.setMaxWidth(Double.MAX_VALUE);
         cipherField.setMaxWidth(Double.MAX_VALUE);
-        VBox optionsCard = card("Key and output", new VBox(10,
-                Forms.field("Passphrase", passphrase),
+        VBox encryptKeyField = Forms.field("Encryption passphrase", encryptPassphrase);
+        encryptKeyField.managedProperty().bind(encryptBox.selectedProperty());
+        encryptKeyField.visibleProperty().bind(encryptBox.selectedProperty());
+        Label encryptHint = Forms.hint(
+                "AES-GCM for the payload only (+" + AesCipher.OVERHEAD_BYTES
+                        + " bytes). Separate from the stego passphrase — it is never copied from that field. "
+                        + "Blank is the public empty-string cipher key and is not confidential. "
+                        + "The stego file stays a normal PNG or BMP.");
+        encryptHint.managedProperty().bind(encryptBox.selectedProperty());
+        encryptHint.visibleProperty().bind(encryptBox.selectedProperty());
+        VBox optionsCard = card("Keys and output", new VBox(10,
+                Forms.field("Stego passphrase", stegoPassphrase),
+                Forms.hint("Pixel-walk key. Blank uses the public empty-string walk (PBKDF2 of \"\"). "
+                        + "That walk is not a secret."),
                 encryptBox,
-                new HBox(12, schemeField, cipherField),
-                Forms.field("Stego image", Forms.pathRow(outputField, browseButton("Save as…", this::chooseOutput))),
-                Forms.hint("AES-GCM encrypts the hidden message before embedding (+"
-                        + AesCipher.OVERHEAD_BYTES
-                        + " bytes). The stego file stays a normal PNG or BMP. "
-                        + "The passphrase selects the pixel walk and is the cipher passphrase when encryption is on.")));
+                encryptKeyField,
+                encryptHint,
+                schemeRow(schemeField, cipherField),
+                Forms.field("Stego image", Forms.pathRow(outputField, browseButton("Save as…", this::chooseOutput)))));
 
         sizeLabel.getStyleClass().add("hint");
-        HBox actions = new HBox(8, embedButton, openExtractButton, Forms.spacer(), sizeLabel);
-        actions.setAlignment(Pos.CENTER_LEFT);
+        sizeLabel.setMinWidth(0);
+        sizeLabel.setWrapText(true);
+        FlowPane actions = new FlowPane(8, 8, embedButton, openExtractButton, sizeLabel);
+        actions.setPrefWrapLength(420);
         form.getChildren().addAll(messageCard, optionsCard, actions);
-        VBox.setVgrow(messageArea, Priority.ALWAYS);
+        VBox.setVgrow(messageCard, Priority.ALWAYS);
+        form.setMinWidth(0);
 
         ToggleGroup views = new ToggleGroup();
         viewCover.setToggleGroup(views);
@@ -144,6 +162,8 @@ final class EmbedPane extends BorderPane {
         imageCard.attachPath("Cover", coverField);
         imageCard.addExtra(viewToggle);
         imageColumn.getChildren().add(imageCard);
+        VBox.setVgrow(imageCard, Priority.ALWAYS);
+        imageCard.setMaxHeight(Double.MAX_VALUE);
         imageColumn.setFillWidth(true);
         Forms.wrapHints(form);
         Forms.wrapHints(imageColumn);
@@ -165,11 +185,13 @@ final class EmbedPane extends BorderPane {
         views.selectedToggleProperty().addListener((obs, previous, next) -> showPreview());
         embedButton.setOnAction(event -> embed());
         openExtractButton.setOnAction(event -> openExtract());
-        passphrase.setOnAction(event -> embed());
+        stegoPassphrase.setOnAction(event -> embed());
+        encryptPassphrase.setOnAction(event -> embed());
         outputField.setOnAction(event -> embed());
 
         widthProperty().addListener((obs, previous, width) -> arrange(width.doubleValue()));
-        placeImage(false);
+        setMinWidth(0);
+        PaneLayout.apply(this, imageColumn, imageCard, form, false, 1080);
         refreshSize();
     }
 
@@ -177,30 +199,8 @@ final class EmbedPane extends BorderPane {
         if (width <= 0) {
             return;
         }
-        boolean stack = width < 820;
-        if (arranged && stack == stacked) {
-            return;
-        }
-        arranged = true;
-        stacked = stack;
-        placeImage(stack);
-    }
-
-    private void placeImage(boolean stack) {
-        if (stack) {
-            setLeft(null);
-            setTop(imageColumn);
-            imageColumn.setPrefWidth(Region.USE_COMPUTED_SIZE);
-            imageColumn.setMaxWidth(Double.MAX_VALUE);
-            BorderPane.setMargin(imageColumn, new Insets(0, 0, 16, 0));
-        } else {
-            setTop(null);
-            setLeft(imageColumn);
-            imageColumn.setPrefWidth(340);
-            imageColumn.setMaxWidth(340);
-            BorderPane.setMargin(imageColumn, new Insets(0, 16, 0, 0));
-        }
-        setCenter(form);
+        stacked = PaneLayout.stacked(stacked, width);
+        PaneLayout.apply(this, imageColumn, imageCard, form, stacked, width);
     }
 
     private void chooseCover() {
@@ -319,8 +319,9 @@ final class EmbedPane extends BorderPane {
             }
         }
         Path output = pathFrom(outputField.getText());
-        String key = passphrase.getText();
+        String stegoKey = stegoPassphrase.getText();
         boolean encrypt = encryptBox.isSelected();
+        String encryptKey = encrypt ? encryptPassphrase.getText() : null;
         String scheme = schemeBox.getValue();
         String cipher = cipherBox.getValue();
         boolean fromFile = fileMode.isSelected();
@@ -333,10 +334,6 @@ final class EmbedPane extends BorderPane {
         }
         if (output == null) {
             status.show(StatusBar.Level.ERROR, "Choose where to save the stego image.");
-            return;
-        }
-        if (key.isEmpty()) {
-            status.show(StatusBar.Level.ERROR, "Enter a passphrase.");
             return;
         }
         if (fromFile && messageFile == null) {
@@ -366,7 +363,7 @@ final class EmbedPane extends BorderPane {
                         ? StegoOperations.readMessageFile(messageFile)
                         : messageText.getBytes(StandardCharsets.UTF_8);
                 String warning = ImageFormats.lossyInputWarning(cover);
-                EmbedResult result = operations.embed(image, message, key, encrypt, scheme, cipher);
+                EmbedResult result = operations.embed(image, message, stegoKey, encrypt, encryptKey, scheme, cipher);
                 StegoOperations.writeStego(result.image(), output);
                 return new EmbedDone(
                         FxImages.scale(image, FxImages.PREVIEW_EDGE),
@@ -390,7 +387,8 @@ final class EmbedPane extends BorderPane {
             imageCard.setDetail(fileName(output) + " · " + dimensions(done.width(), done.height(), done.capacity()));
             imageCard.setWarning(done.warning());
             usedOutput = output;
-            usedKey = key;
+            usedStegoKey = stegoKey;
+            usedEncryptKey = encrypt ? encryptKey : "";
             usedEncrypt = encrypt;
             usedScheme = scheme == null ? StegoOperations.DEFAULT_SCHEME : scheme;
             usedCipher = cipher == null ? StegoOperations.DEFAULT_CIPHER : cipher;
@@ -406,7 +404,7 @@ final class EmbedPane extends BorderPane {
             status.show(StatusBar.Level.ERROR, "Embed a message before opening Extract.");
             return;
         }
-        handoff.openExtract(usedOutput, usedKey, usedEncrypt, usedScheme, usedCipher);
+        handoff.openExtract(usedOutput, usedStegoKey, usedEncryptKey, usedEncrypt, usedScheme, usedCipher);
     }
 
     private void refreshSize() {
@@ -440,6 +438,12 @@ final class EmbedPane extends BorderPane {
         }
         String text = messageArea.getText();
         return (text == null ? "" : text).getBytes(StandardCharsets.UTF_8).length;
+    }
+
+    private static HBox schemeRow(VBox schemeField, VBox cipherField) {
+        HBox row = new HBox(12, schemeField, cipherField);
+        row.setMinWidth(0);
+        return row;
     }
 
     private static VBox card(String title, javafx.scene.Node body) {
@@ -508,7 +512,7 @@ final class EmbedPane extends BorderPane {
 
     @FunctionalInterface
     interface Handoff {
-        void openExtract(Path stego, String key, boolean decrypt, String scheme, String cipher);
+        void openExtract(Path stego, String stegoKey, String encryptKey, boolean decrypt, String scheme, String cipher);
     }
 
     private record CoverLoad(BufferedImage preview, int width, int height, int capacity, String warning) {

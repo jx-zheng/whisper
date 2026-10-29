@@ -38,8 +38,9 @@ public abstract class AbstractScheme {
         if (image == null) {
             throw new IllegalArgumentException("image must not be null");
         }
-        if (key == null || key.isEmpty()) {
-            throw new IllegalArgumentException("key must not be null or empty");
+        if (key == null) {
+            throw new IllegalArgumentException(
+                    "key must not be null; use an empty string for the public default walk");
         }
         this.image = image;
         this.imageWidth = image.getWidth();

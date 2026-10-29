@@ -33,6 +33,15 @@ class AesCipherTest {
     }
 
     @Test
+    void emptyPassphraseIsAValidAeadKey() throws EncryptionException {
+        byte[] plaintext = "public cipher".getBytes(StandardCharsets.UTF_8);
+        byte[] ciphertext = cipher.encrypt(plaintext, "");
+        assertArrayEquals(plaintext, cipher.decrypt(ciphertext, ""));
+        assertThrows(EncryptionException.class, () -> cipher.decrypt(ciphertext, "x"));
+        assertThrows(IllegalArgumentException.class, () -> cipher.encrypt(plaintext, null));
+    }
+
+    @Test
     void wrongPassphraseFails() throws EncryptionException {
         byte[] ciphertext = cipher.encrypt("secret".getBytes(StandardCharsets.UTF_8), "right");
         assertThrows(EncryptionException.class, () -> cipher.decrypt(ciphertext, "wrong"));
