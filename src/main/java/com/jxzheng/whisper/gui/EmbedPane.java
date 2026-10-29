@@ -6,9 +6,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import com.jxzheng.whisper.carrier.CarrierCache;
+import com.jxzheng.whisper.crypto.CipherRegistry;
+import com.jxzheng.whisper.crypto.Envelope;
+import com.jxzheng.whisper.crypto.KdfProfile;
 import com.jxzheng.whisper.encryption.AesCipher;
 import com.jxzheng.whisper.media.ImageFormats;
+import com.jxzheng.whisper.payload.ImageFit;
+import com.jxzheng.whisper.payload.PayloadKind;
+import com.jxzheng.whisper.schemes.RatePreset;
 import com.jxzheng.whisper.ops.AnalysisFormat;
+import com.jxzheng.whisper.ops.PayloadOps;
 import com.jxzheng.whisper.ops.StegoOperations;
 import com.jxzheng.whisper.ops.StegoOperations.EmbedResult;
 
@@ -22,6 +29,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.FlowPane;
@@ -40,11 +48,15 @@ final class EmbedPane extends BorderPane {
     private final TextField coverField = new TextField();
     private final TextArea messageArea = new TextArea();
     private final TextField messageFileField = new TextField();
-    private final RadioButton textMode = new RadioButton("Text");
-    private final RadioButton fileMode = new RadioButton("File");
+    private final ToggleButton textKind = kindButton("Text", "Hide text");
+    private final ToggleButton fileKind = kindButton("File", "Hide any file");
+    private final ToggleButton imageKind = kindButton("Image", "Hide an image");
+    private final CheckBox fitBox = new CheckBox("Fit to capacity");
+    private final ComboBox<String> presetBox = Forms.choice(java.util.List.of("standard", "low", "paranoid"), "standard");
+    private final Label fingerprint = new Label(" ");
     private final PassphraseField stegoPassphrase = new PassphraseField("Optional — blank uses the public walk");
     private final PassphraseField encryptPassphrase = new PassphraseField("Optional — blank uses the public cipher key");
-    private final CheckBox encryptBox = new CheckBox("Encrypt payload (AES-GCM)");
+    private final CheckBox encryptBox = new CheckBox("Separate encryption passphrase");
     private final ComboBox<String> schemeBox;
     private final ComboBox<String> cipherBox;
     private final TextField outputField = new TextField();
@@ -80,8 +92,11 @@ final class EmbedPane extends BorderPane {
         this.operations = operations;
         this.status = status;
         this.handoff = handoff;
-        schemeBox = Forms.choice(operations.schemes(), StegoOperations.DEFAULT_SCHEME);
-        cipherBox = Forms.choice(operations.ciphers(), StegoOperations.DEFAULT_CIPHER);
+        java.util.List<String> schemeNames = new java.util.ArrayList<>();
+        schemeNames.add("auto");
+        schemeNames.addAll(operations.schemes());
+        schemeBox = Forms.choice(schemeNames, "auto");
+        cipherBox = Forms.choice(operations.ciphers(), CipherRegistry.CHACHA);
         build();
         disableProperty().bind(status.busyProperty());
     }
@@ -92,28 +107,47 @@ final class EmbedPane extends BorderPane {
         messageArea.setPromptText("Text to hide");
         messageArea.setWrapText(true);
         messageArea.setPrefRowCount(4);
-        messageFileField.setPromptText("Path to a UTF-8 text file");
+        messageFileField.setPromptText("Drop any file, or type a path");
         outputField.setPromptText("stego.png");
         embedButton.getStyleClass().add("primary");
         cipherBox.setDisable(true);
         openExtractButton.setVisible(false);
         openExtractButton.setManaged(false);
 
-        ToggleGroup source = new ToggleGroup();
-        textMode.setToggleGroup(source);
-        fileMode.setToggleGroup(source);
-        textMode.setSelected(true);
+        ToggleGroup kinds = new ToggleGroup();
+        textKind.setToggleGroup(kinds);
+        fileKind.setToggleGroup(kinds);
+        imageKind.setToggleGroup(kinds);
+        textKind.setSelected(true);
+        HBox kindBar = new HBox(textKind, fileKind, imageKind);
+        kindBar.getStyleClass().add("segmented");
+        kindBar.setMaxWidth(Double.MAX_VALUE);
         VBox fileBox = new VBox(6,
                 Forms.pathRow(messageFileField, browseButton("Browse", this::chooseMessageFile)),
-                Forms.hint("Read as UTF-8 text, same as --message-file."));
-        messageArea.managedProperty().bind(textMode.selectedProperty());
-        messageArea.visibleProperty().bind(textMode.selectedProperty());
-        fileBox.managedProperty().bind(fileMode.selectedProperty());
-        fileBox.visibleProperty().bind(fileMode.selectedProperty());
+                fitBox,
+                Forms.hint("File keeps the bytes. Image shows a preview after extract. Fit re-encodes a smaller JPEG copy of a hidden image. The cover is not re-encoded."));
+        fileBox.getStyleClass().add("drop-tile");
+        imageKind.selectedProperty().addListener((obs, was, on) -> fileBox.getStyleClass().removeAll("image-tile", "drop-tile"));
+        kinds.selectedToggleProperty().addListener((obs, was, selected) -> {
+            fileBox.getStyleClass().removeAll("image-tile", "drop-tile");
+            fileBox.getStyleClass().add(selected == imageKind ? "image-tile" : "drop-tile");
+            messageFileField.setPromptText(selected == imageKind
+                    ? "Image to hide (PNG, JPEG, GIF, BMP)"
+                    : "Drop any file, or type a path");
+            fitBox.setVisible(selected == imageKind);
+            fitBox.setManaged(selected == imageKind);
+        });
+        fitBox.setVisible(false);
+        fitBox.setManaged(false);
+        messageArea.getStyleClass().add("paper");
+        messageArea.managedProperty().bind(textKind.selectedProperty());
+        messageArea.visibleProperty().bind(textKind.selectedProperty());
+        fileBox.managedProperty().bind(textKind.selectedProperty().not());
+        fileBox.visibleProperty().bind(textKind.selectedProperty().not());
 
         messageArea.setMinWidth(0);
         messageArea.setMaxHeight(Double.MAX_VALUE);
-        VBox messageBody = new VBox(8, new HBox(16, textMode, fileMode), messageArea, fileBox);
+        VBox messageBody = new VBox(8, kindBar, messageArea, fileBox);
         VBox.setVgrow(messageArea, Priority.ALWAYS);
         VBox messageCard = card("Message", messageBody);
         VBox.setVgrow(messageBody, Priority.ALWAYS);
@@ -143,6 +177,7 @@ final class EmbedPane extends BorderPane {
                 encryptKeyField,
                 encryptHint,
                 schemeRow(schemeField, cipherField),
+                Forms.field("Stealth", presetBox),
                 Forms.field("Stego image", Forms.pathRow(outputField, browseButton("Save as…", this::chooseOutput)))));
 
         sizeLabel.getStyleClass().add("hint");
@@ -150,7 +185,10 @@ final class EmbedPane extends BorderPane {
         sizeLabel.setWrapText(true);
         FlowPane actions = new FlowPane(8, 8, embedButton, openExtractButton, sizeLabel);
         actions.setPrefWrapLength(420);
-        form.getChildren().addAll(messageCard, optionsCard, actions);
+        fingerprint.getStyleClass().add("hint");
+        fingerprint.setWrapText(true);
+        fingerprint.setMaxWidth(Double.MAX_VALUE);
+        form.getChildren().addAll(messageCard, optionsCard, actions, fingerprint);
         VBox.setVgrow(messageCard, Priority.ALWAYS);
         form.setMinWidth(0);
 
@@ -226,7 +264,9 @@ final class EmbedPane extends BorderPane {
         Path path = Choosers.chooseOpen(chooser, getScene() == null ? null : getScene().getWindow());
         if (path != null) {
             messageFileField.setText(path.toString());
-            fileMode.setSelected(true);
+            if (textKind.isSelected()) {
+                fileKind.setSelected(true);
+            }
         }
     }
 
@@ -326,7 +366,7 @@ final class EmbedPane extends BorderPane {
         String encryptKey = encrypt ? encryptPassphrase.getText() : null;
         String scheme = schemeBox.getValue();
         String cipher = cipherBox.getValue();
-        boolean fromFile = fileMode.isSelected();
+        boolean fromFile = !textKind.isSelected();
         String messageText = messageArea.getText() == null ? "" : messageArea.getText();
         Path messageFile = pathFrom(messageFileField.getText());
 
@@ -360,6 +400,9 @@ final class EmbedPane extends BorderPane {
         status.run("Embedding…", new Task<EmbedDone>() {
             @Override
             protected EmbedDone call() throws Exception {
+                if (modernEmbed(scheme, cipher, encrypt)) {
+                    return embedModern(cover, output, stegoKey, encryptKey, scheme, cipher, fromFile, messageText, messageFile);
+                }
                 BufferedImage image = covers.load(cover);
                 byte[] message = fromFile
                         ? StegoOperations.readMessageFile(messageFile)
@@ -374,7 +417,8 @@ final class EmbedPane extends BorderPane {
                         image.getHeight(),
                         StegoOperations.maxPayloadBytes(image.getWidth(), image.getHeight()),
                         result.payloadBytes(),
-                        warning);
+                        warning,
+                        null);
             }
         }, done -> {
             loadGeneration++;
@@ -396,9 +440,80 @@ final class EmbedPane extends BorderPane {
             usedCipher = cipher == null ? StegoOperations.DEFAULT_CIPHER : cipher;
             openExtractButton.setManaged(true);
             openExtractButton.setVisible(true);
+            fingerprint.setText(done.verified() == null ? "" : done.verified());
             status.show(StatusBar.Level.SUCCESS,
-                    "Embedded " + done.payloadBytes() + " byte(s) into " + output);
+                    "Embedded " + done.payloadBytes() + " byte(s) into " + output
+                            + (done.verified() == null ? "" : " · " + done.verified()));
         });
+    }
+
+    private static boolean modernEmbed(String scheme, String cipher, boolean encrypt) {
+        if (scheme != null && (scheme.equals("auto") || scheme.startsWith("hill") || scheme.startsWith("uerd"))) {
+            return true;
+        }
+        if (!encrypt) {
+            return false;
+        }
+        return cipher != null && !cipher.equals("aes");
+    }
+
+    private EmbedDone embedModern(
+            Path cover, Path output, String stegoKey, String encryptKey, String scheme, String cipher,
+            boolean fromFile, String messageText, Path messageFile) throws Exception {
+        byte[] content;
+        PayloadKind kind;
+        String name = "";
+        String mime = "text/plain";
+        boolean reencoded = false;
+        if (imageKind.isSelected()) {
+            kind = PayloadKind.IMAGE;
+            content = Files.readAllBytes(messageFile);
+            name = messageFile.getFileName() == null ? "image" : messageFile.getFileName().toString();
+            mime = "image/png";
+            if (fitBox.isSelected()) {
+                ImageFit.Result fit = ImageFit.fit(content, 75, 1024);
+                content = fit.bytes();
+                reencoded = true;
+                mime = "image/jpeg";
+            }
+        } else if (fromFile) {
+            kind = PayloadKind.FILE;
+            content = Files.readAllBytes(messageFile);
+            name = messageFile.getFileName() == null ? "file" : messageFile.getFileName().toString();
+            mime = "application/octet-stream";
+        } else {
+            kind = PayloadKind.TEXT;
+            content = messageText.getBytes(StandardCharsets.UTF_8);
+        }
+        boolean encrypting = !"none".equals(cipher);
+        Envelope.SuiteKind suite = switch (cipher == null ? "" : cipher) {
+            case "aes-256-gcm" -> Envelope.SuiteKind.AES;
+            case "none" -> Envelope.SuiteKind.INTEGRITY;
+            default -> Envelope.SuiteKind.CHACHA;
+        };
+        var outcome = new PayloadOps().hide(new PayloadOps.HideRequest(
+                cover, output, kind, content, name, mime, scheme, suite,
+                RatePreset.fromId(presetBox.getValue()), KdfProfile.DEFAULT,
+                stegoKey.toCharArray(),
+                encrypting && encryptKey != null ? encryptKey.toCharArray() : null,
+                encrypting && encryptKey != null,
+                false, reencoded));
+        if (!outcome.ok()) {
+            throw new IllegalArgumentException(outcome.message());
+        }
+        BufferedImage image = covers.load(cover);
+        BufferedImage stego = null;
+        try {
+            stego = StegoOperations.readImage(output);
+        } catch (Exception ignored) {
+            stego = image;
+        }
+        return new EmbedDone(
+                FxImages.scale(image, FxImages.PREVIEW_EDGE),
+                FxImages.scale(stego, FxImages.PREVIEW_EDGE),
+                image.getWidth(), image.getHeight(),
+                StegoOperations.maxPayloadBytes(image.getWidth(), image.getHeight()),
+                content.length, null, outcome.message());
     }
 
     private void openExtract() {
@@ -427,7 +542,7 @@ final class EmbedPane extends BorderPane {
     }
 
     private int plaintextBytes() {
-        if (fileMode.isSelected()) {
+        if (!textKind.isSelected()) {
             Path path = pathFrom(messageFileField.getText());
             if (path == null || !Files.isRegularFile(path)) {
                 return -1;
@@ -454,6 +569,14 @@ final class EmbedPane extends BorderPane {
         VBox box = new VBox(10, heading, body);
         box.getStyleClass().add("card");
         return box;
+    }
+
+    private static ToggleButton kindButton(String text, String accessible) {
+        ToggleButton button = new ToggleButton(text);
+        button.getStyleClass().add("segment");
+        button.setMaxWidth(Double.MAX_VALUE);
+        button.setAccessibleText(accessible);
+        return button;
     }
 
     private static Button browseButton(String text, Runnable action) {
@@ -527,6 +650,7 @@ final class EmbedPane extends BorderPane {
             int height,
             int capacity,
             int payloadBytes,
-            String warning) {
+            String warning,
+            String verified) {
     }
 }

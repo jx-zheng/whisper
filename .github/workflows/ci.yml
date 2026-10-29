@@ -19,4 +19,4 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb libgtk-3-0 || sudo apt-get install -y xvfb libgtk-3-0t64
       - name: Verify
-        run: xvfb-run -a mvn -B verify
+        run: xvfb-run -a mvn -B -Dwhisper.layout=true verify

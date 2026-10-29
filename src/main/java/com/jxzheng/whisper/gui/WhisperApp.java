@@ -124,7 +124,7 @@ public final class WhisperApp extends Application {
         mark.setFitHeight(32);
         Label title = new Label("whisper");
         title.getStyleClass().add("brand-title");
-        Label subtitle = new Label("Zhang–Tang LSB-pair steganography");
+        Label subtitle = new Label("Adaptive steganography for images");
         subtitle.getStyleClass().add("hint");
         subtitle.setWrapText(true);
         subtitle.setMinWidth(0);

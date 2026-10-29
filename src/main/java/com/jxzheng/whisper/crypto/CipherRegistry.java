@@ -12,7 +12,11 @@ public final class CipherRegistry {
 
     public static final String LEGACY_AES = "aes";
 
-    private static final CipherRegistry INSTANCE = new CipherRegistry(List.of(LEGACY_AES));
+    public static final String CHACHA = "chacha20-poly1305";
+    public static final String AES_256 = "aes-256-gcm";
+    public static final String NONE = "none";
+
+    private static final CipherRegistry INSTANCE = new CipherRegistry(List.of(CHACHA, AES_256, NONE, LEGACY_AES));
 
     private final List<String> ids;
 

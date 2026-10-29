@@ -48,7 +48,10 @@ final class ExtractPane extends BorderPane {
     ExtractPane(StegoOperations operations, StatusBar status) {
         this.operations = operations;
         this.status = status;
-        schemeBox = Forms.choice(operations.schemes(), StegoOperations.DEFAULT_SCHEME);
+        java.util.List<String> schemeNames = new java.util.ArrayList<>();
+        schemeNames.add("auto");
+        schemeNames.addAll(operations.schemes());
+        schemeBox = Forms.choice(schemeNames, "auto");
         cipherBox = Forms.choice(operations.ciphers(), StegoOperations.DEFAULT_CIPHER);
         build();
         disableProperty().bind(status.busyProperty());
@@ -220,16 +223,30 @@ final class ExtractPane extends BorderPane {
             return;
         }
         clearResult();
-        status.run("Extracting…", new Task<byte[]>() {
+        status.run("Extracting…", new Task<Extracted>() {
             @Override
-            protected byte[] call() throws Exception {
-                BufferedImage image = StegoOperations.readImage(input);
-                return operations.extract(image, stegoKey, decrypt, encryptKey, scheme, cipher);
+            protected Extracted call() throws Exception {
+                if (scheme != null && (scheme.equals("zhang-tang") || scheme.equals("zt")) && !"auto".equals(scheme)) {
+                    BufferedImage image = StegoOperations.readImage(input);
+                    byte[] bytes = operations.extract(image, stegoKey, decrypt, encryptKey, scheme, cipher);
+                    return new Extracted(bytes, "Unverified (legacy format — re-embed to get verification)");
+                }
+                var outcome = new com.jxzheng.whisper.ops.PayloadOps().reveal(
+                        input,
+                        stegoKey.toCharArray(),
+                        decrypt && encryptKey != null ? encryptKey.toCharArray() : null,
+                        decrypt,
+                        com.jxzheng.whisper.crypto.KdfProfile.DEFAULT,
+                        scheme);
+                if (!outcome.ok() || outcome.content() == null) {
+                    throw new IllegalArgumentException(outcome.message());
+                }
+                return new Extracted(outcome.content(), outcome.message());
             }
-        }, bytes -> showPayload(bytes));
+        }, extracted -> showPayload(extracted.bytes(), extracted.verified()));
     }
 
-    private void showPayload(byte[] bytes) {
+    private void showPayload(byte[] bytes, String verified) {
         payload = bytes;
         PayloadPreview.View view = PayloadPreview.of(bytes);
         payloadIsText = view.text();
@@ -244,7 +261,12 @@ final class ExtractPane extends BorderPane {
                     + " binary byte(s). Save the file to keep the exact bytes.");
         }
         saveButton.setDisable(false);
-        status.show(StatusBar.Level.SUCCESS, "Recovered " + bytes.length + " byte(s).");
+        resultMeta.getStyleClass().removeAll("badge-ok", "badge-warn", "badge-bad");
+        if (verified != null && verified.startsWith("Verified")) {
+            resultMeta.getStyleClass().add(verified.contains("not encrypted") || verified.contains("Unverified")
+                    ? "badge-warn" : "badge-ok");
+        }
+        status.show(StatusBar.Level.SUCCESS, verified == null ? "Recovered " + bytes.length + " byte(s)." : verified);
     }
 
     private void save() {
@@ -299,5 +321,8 @@ final class ExtractPane extends BorderPane {
     }
 
     private record Loaded(BufferedImage preview, int width, int height) {
+    }
+
+    private record Extracted(byte[] bytes, String verified) {
     }
 }

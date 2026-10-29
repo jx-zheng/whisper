@@ -115,11 +115,11 @@ public final class PayloadOps {
                 if ("jpeg".equals(format)) {
                     return revealUerd(file, stego, enc, split, profile);
                 }
-                Outcome hillOutcome = revealHill(file, format, stego, enc, split, profile);
-                if (hillOutcome.ok() || hillOutcome.exitCode() == 2) {
-                    return hillOutcome;
+                Outcome zhang = revealZhang(file, stego, enc, split, profile, true);
+                if (zhang.ok() || zhang.exitCode() == 2) {
+                    return zhang;
                 }
-                return revealZhang(file, stego, enc, split, profile, true);
+                return revealHill(file, format, stego, enc, split, profile);
             }
             return switch (scheme) {
                 case "hill-stc" -> revealHill(file, format, stego, enc, split, profile);

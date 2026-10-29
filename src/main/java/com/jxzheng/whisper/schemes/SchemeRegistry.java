@@ -3,12 +3,16 @@ package com.jxzheng.whisper.schemes;
 import java.util.List;
 import java.util.Locale;
 
+import com.jxzheng.whisper.schemes.adaptive.HillStcScheme;
+import com.jxzheng.whisper.schemes.adaptive.UerdStcScheme;
+
 /**
  * Ordered scheme list. Combo boxes and the CLI read this rather than a hard-coded name.
  */
 public final class SchemeRegistry {
 
-    private static final SchemeRegistry INSTANCE = new SchemeRegistry(List.of(new ZhangTangStegoScheme()));
+    private static final SchemeRegistry INSTANCE = new SchemeRegistry(List.of(
+            new HillStcScheme(), new UerdStcScheme(), new ZhangTangStegoScheme()));
 
     private final List<StegoScheme> schemes;
 
@@ -44,6 +48,9 @@ public final class SchemeRegistry {
                 : scheme.toLowerCase(Locale.ROOT).trim();
         return switch (name) {
             case "zhang-tang", "zhangtang", "zt" -> ZhangTangStegoScheme.ID;
+            case "hill", "hill-stc" -> HillStcScheme.ID;
+            case "uerd", "uerd-stc", "jpeg" -> UerdStcScheme.ID;
+            case "auto" -> "auto";
             default -> name;
         };
     }
