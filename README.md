@@ -1,91 +1,116 @@
 # whisper
 
-Steganographic messaging via Zhang–Tang LSB-pair embedding.
+Whisper hides a message, a file, or an image inside a picture, then checks that the hidden bytes are exactly the ones that were embedded.
 
-**whisper** is a Java command-line tool, with a desktop app for the same operations. It embeds secret messages in RGB images using the Zhang–Tang LSB-pair steganography scheme from *[A Novel Image Steganography Algorithm Against Statistical Analysis](https://ieeexplore.ieee.org/document/4370824)* (Hong-Juan Zhang & Hong-Jun Tang, ICMLC 2007).
+The cover stays a normal PNG, BMP, or JPEG. Whisper encrypts only the payload. It does not scramble the picture, and it does not survive recompression, resizing, screenshots, or a chat app that re-encodes uploads. A careful analyst can still try to detect that something was embedded. Use a strong passphrase.
 
-The scheme hides each secret bit `m` in a color-channel sample `c` relative to the previous sample `p` so that `(LSB(p) + LSB(c')) mod 2 == m`, adjusting `c` by at most ±1 (with overflow corrected by ±2). Pixel walk order follows the **stego passphrase**. A truncated HMAC over the length header rejects most wrong-key extractions.
+There is a command-line tool and a JavaFX desktop app. Both call the same code.
 
-The stego passphrase is optional. Omit `-k`, leave it empty, or leave the Stego passphrase field blank to use the public default walk: PBKDF2-HMAC-SHA256 of the empty string with the fixed salt `whisper-stego-prng-v1`. That walk is not a secret — anyone can extract. HMAC-SHA256 rejects a zero-length key, so the length-header tag for this default uses the same PBKDF2 output. A non-empty stego passphrase still keys that tag with the raw UTF-8 passphrase. Spaces are a real passphrase; only a missing or empty value selects the default.
+## Quick start
 
-Optional AES-128-GCM encrypts the hidden message before embedding. The stego file stays a normal PNG or BMP; the container is not encrypted. The **encryption passphrase** is separate from the stego key. Pass it with `-E` / `--encrypt-key` (or the Encryption passphrase field). It is never copied from `-k`. Omit `-E`, pass `-E ""`, or leave the field blank to use the public empty-string AES-GCM key: PBKDF2 of the empty password with a random salt, plus the usual IV and tag. That key authenticates the payload and does not provide confidentiality. Omitting `-E` while `-e` is set prints a warning on stderr. An explicit `-E ""` does the same derivation without the warning.
-
-Older builds used `-k` for both the pixel walk and AES-GCM. Extract those images with the same string on both flags: `extract -k K -e -E K`.
-
-Pixel walks use a PBKDF2-stretched HMAC-SHA256 counter PRNG (not `String.hashCode()`). This changes walks vs earlier builds — re-embed existing messages. Use `-e` with an encryption passphrase when confidentiality matters.
-Passphrases on the command line may be visible to other local users — prefer a private shell history.
-
-## Requirements
-
-- Java 21+
-- Maven 3.8+
-
-## Building
+Java 21 and Maven 3.8 or newer.
 
 ```bash
-mvn clean package
-```
-
-This produces an executable uber-JAR at `target/whisper-0.9.0.jar`. The CLI is unchanged: `java -jar` still runs embed, extract, and analyze.
-
-## Desktop app
-
-The GUI calls the same embed, extract, and analyze code as the CLI. It is dark only: there is no light palette and no theme toggle. Drag the window to resize it. The preview sits beside the form when the window is wide and moves above the form when it is narrow. Message areas grow with the window; the page scrolls when the content is taller than the window. The smallest size is 640×480. It needs a display. Maven downloads the OpenJFX 21 natives for the OS you are building on (macOS, Windows, or Linux). On Linux the machine also needs GTK 3, which desktop installs already have.
-
-```bash
+mvn -B package
 mvn javafx:run
 ```
 
-The shaded JAR does not bundle JavaFX, so `java -jar` stays the CLI.
-
-Embed, Extract, and Analyze are separate tabs: cover or stego file (you can type a path, browse, or drop a file), an optional masked **Stego passphrase**, scheme (`zhang-tang`), and cipher (`aes`, used when encryption is on). **Encryption passphrase** is a second masked field, shown only when **Encrypt payload (AES-GCM)** or **Decrypt payload (AES-GCM)** is checked. Both fields are optional. Message files are UTF-8 text, same as `--message-file`. Stego output is PNG or BMP. Encryption matches `-e`: it encrypts the hidden message before embedding, and the output stays a normal PNG or BMP. After a successful embed, **Open in Extract** copies the stego path, both passphrases, and the encryption setting. Analyze does not use a passphrase. It shows the chi-square and RS figures from the CLI.
-
-## Usage
+The shaded jar is the CLI. JavaFX stays on the module path and is not inside the jar.
 
 ```bash
-# Embed with the public default pixel walk (no stego key)
-java -jar target/whisper-0.9.0.jar embed \
-  -i cover.png -o stego.png -m "hello"
+java -jar target/whisper-1.0.0.jar embed \
+  -i cover.png -o stego.png -m "hello" -k "a real passphrase"
 
-# Embed with a stego key
-java -jar target/whisper-0.9.0.jar embed \
-  -i cover.png -o stego.png -m "hello" -k walk-secret
-
-# Embed with a stego key and a different AES passphrase
-java -jar target/whisper-0.9.0.jar embed \
-  -i cover.png -o stego.png -m "hello" -k walk-secret -e -E cipher-secret
-
-# Extract the public-walk message
-java -jar target/whisper-0.9.0.jar extract -i stego.png
-
-# Extract an encrypted payload
-java -jar target/whisper-0.9.0.jar extract -i stego.png -k walk-secret -e -E cipher-secret
-
-# Chi-square + RS steganalysis checks
-java -jar target/whisper-0.9.0.jar analyze -i stego.png
+java -jar target/whisper-1.0.0.jar extract \
+  -i stego.png -k "a real passphrase"
 ```
 
-| Flag | Meaning |
-|------|---------|
-| `-i, --input-file` | Cover/stego image |
-| `-o, --output-file` | Output stego image (embed) or message file (extract) |
-| `-m, --message` | Message text to embed |
-| `-f, --message-file` | Read embed message from a file |
-| `-k, --key` | Stego / pixel-walk key. Optional. Omitted or empty uses the public empty-string walk |
-| `-e, --encrypt` | Encrypt the message payload before embed / decrypt after extract. Does not encrypt the image |
-| `-E, --encrypt-key` | Encryption passphrase (PBKDF2 → AES-GCM) for the payload only. Not copied from `-k`. Omitted or empty (`-E ""`) is the public empty-string cipher key. Omitting it with `-e` prints a warning |
-| `-s, --scheme` | Scheme name (default: `zhang-tang`) |
-| `-c, --cipher` | Cipher name when `-e` is set (default: `aes`) |
-| `-h, --help` | Usage help |
+Those two commands are the defaults: `auto` picks HILL for a PNG and UERD for a JPEG, and the cipher is ChaCha20-Poly1305. Omit `-E` and the stego passphrase is also the encryption key. A blank passphrase still embeds, and the result is labelled not confidential.
 
-**Use PNG (or BMP).** Embed allow-lists PNG/BMP only — JPEG/WebP/GIF and unknown extensions are rejected because they destroy LSBs (GIF via palette quantization). Cover warnings are filename-extension heuristics only.
+Extract prints `Verified · SHA-256 …` on standard error when the payload checks out.
 
-## Statistical checks
+## Choosing a scheme
 
-`analyze` runs Westfeld–Pfitzmann chi-square and Fridrich RS heuristics. Treat them as relative diagnostics (cover vs stego), not calibrated detectors — absolute thresholds vary by image.
+| Scheme | Use it for | What changes | Rate |
+|---|---|---|---|
+| `hill-stc` | PNG or BMP photos | Green (or grey) samples, ±1, HILL cost + STC | 0.10 bpp standard |
+| `uerd-stc` | Baseline JPEG photos | Nonzero luminance AC coefficients, ±1 toward zero | 0.10 bpnzAC standard |
 
-## Testing
+Zhang–Tang is extract-only. It reads Whisper 0.9 images and is not offered for new embeds.
+
+Standard, Low (0.05), and Paranoid (0.02) are the stealth presets. The recipient does not have to pick the same one.
+
+Rough room at Standard, after framing:
+
+- 1 megapixel PNG: about 12 KB
+- 12 megapixel PNG: about 150 KB
+
+A JPEG's room depends on how many nonzero AC coefficients it has, not on its pixel count. The desktop app shows a content estimate for the open cover.
+
+## What you can hide
+
+- **Text.** UTF-8. `--message` / `-m`, or `-f` / `--message-file`.
+- **File.** Any bytes. `--file report.pdf`. The sanitized base name is stored so Extract can suggest it.
+- **Image.** `--image secret.png`. `--fit-quality` and `--fit-max-edge` re-encode the hidden image as JPEG, stepping the quality and the longest edge down until the image bytes fit the cover's content room. The cover is not re-encoded.
+
+Passphrases: `-k` is the stego passphrase. `-E` / `--encrypt-key` is a separate encryption passphrase. Omit `-E` and the stego passphrase is used for both. New embeds use ChaCha20-Poly1305 or AES-256-GCM. `--kdf high` uses the 2 GiB Argon2id profile and is command-line only. Extracting a `--kdf high` embed needs `--kdf high` again, and enough heap for that profile.
+
+## Verification
+
+On success the CLI and the app show the cipher and the full SHA-256 of the content. Copy that fingerprint and share it separately if you want the recipient to confirm they got the same bytes.
+
+| What you see | Meaning |
+|---|---|
+| Verified · cipher · SHA-256 … | Tag and content hash match |
+| Verified, not confidential · … | Tag and content hash match, and the encryption passphrase was blank |
+| Nothing found with this key | Wrong stego passphrase, no payload, or the image was edited |
+| Wrong encryption passphrase, or the payload was tampered with | The stego passphrase found a payload; the encryption passphrase or the bytes did not |
+| Payload damaged (incomplete / decompression failed) | The stream is truncated or will not inflate. Nothing is shown |
+| Integrity check failed: content hash does not match | The tag matched and the hash did not. The content is not shown |
+| Unverified (legacy format) | A Whisper 0.9 image. Re-embed to get a content hash. Encrypted 0.9 images need `-E` (or `-e` for the public empty key) and then read "AES-GCM tag OK; no content hash". Ciphertext is not shown |
+
+## Security model
+
+- The payload is sealed with ChaCha20-Poly1305 (default) or AES-256-GCM. Keys come from Argon2id (default: 3 passes, 64 MiB, 4 lanes) and HKDF-SHA-256, then an age-style 64 KiB STREAM.
+- The content hash sits *inside* the authenticated frame. There is no magic banner and no clear hash in the embedded stream.
+- Whisper does not protect against recompression, resize, filters, screenshots, a weak passphrase, or a determined steganalyst. Chi-square and RS in Analyze are relative checks, not a proof that a file is clean or dirty.
+- Passphrases on the command line can be seen by other users on the machine. Prefer a private shell. JavaFX keeps passphrase text in strings the runtime will not wipe; that is a limit of the toolkit.
+- There is no network access, telemetry, or auto-update.
+
+## Legacy 0.9 images
+
+Images embedded with Zhang–Tang, with or without AES-128-GCM/PBKDF2, still extract:
 
 ```bash
-mvn test
+java -jar target/whisper-1.0.0.jar extract -i old.png -k "legacy-stego-key"
+java -jar target/whisper-1.0.0.jar extract -i old.png -k "legacy-stego-key" -e -E "legacy-enc-key"
 ```
+
+They are labelled unverified. Zhang–Tang and AES-128-GCM are extract-only: new embeds do not write that format. Re-embed with `hill-stc` or `uerd-stc` if you want the content hash. `-e` without `-E` tries the public empty legacy key. `-c aes` on extract is the same legacy hint.
+
+## Build, test, bench
+
+```bash
+mvn -B verify
+mvn -B -Pbench test    # Argon2id and STC timings
+mvn -B -Pmem test      # 12 megapixel hill-stc, forked with -Xmx512m
+```
+
+The layout check runs when `whisper.layout` is true (CI sets this under Xvfb):
+
+```bash
+xvfb-run -a mvn -B -Dwhisper.layout=true -Dtest=LayoutRegressionTest test
+```
+
+## Credits and references
+
+- Zhang and Tang, *A Novel Image Steganography Algorithm Against Statistical Analysis*, ICMLC 2007.
+- Filler, Judas, and Fridrich, *Minimizing Additive Distortion in Steganography Using Syndrome-Trellis Codes*, IEEE TIFS 2011. The STC here is a clean-room implementation of that construction. It is not the Binghamton toolbox.
+- Li, Wang, Huang, and Li, *A new cost function for spatial image steganography* (HILL), ICIP 2014.
+- UERD as used for nonzero luminance AC coefficients.
+- RFC 8439 (ChaCha20-Poly1305), RFC 9106 (Argon2), RFC 5869 (HKDF), and the age STREAM chunking pattern.
+- Bouncy Castle `bcprov-jdk18on` 1.86 supplies Argon2id and HKDF only. It is not registered as a JCA provider. AEAD, SHA-256, and DEFLATE come from the JDK.
+
+## License
+
+See the repository license. The ported algorithms follow the same author's MIT Whisper2 design; that repository is retired and is not required to build or test Whisper.

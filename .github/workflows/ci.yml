@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: GTK and a virtual display for JavaFX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0 || sudo apt-get install -y xvfb libgtk-3-0t64
+      - name: Verify
+        run: xvfb-run -a mvn -B -Dwhisper.layout=true verify

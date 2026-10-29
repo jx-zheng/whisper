@@ -402,3 +402,56 @@
 .dialog-pane > .button-bar > .container {
     -fx-background-color: -whisper-surface;
 }
+
+.segmented {
+    -fx-background-color: -whisper-field;
+    -fx-background-radius: 8;
+    -fx-padding: 3;
+    -fx-spacing: 2;
+}
+
+.toggle-button.segment {
+    -fx-background-color: transparent;
+    -fx-text-fill: -whisper-muted;
+    -fx-background-radius: 6;
+    -fx-padding: 6 14 6 14;
+}
+
+.toggle-button.segment:selected {
+    -fx-background-color: -whisper-accent-soft;
+    -fx-text-fill: -whisper-text;
+}
+
+.text-area.paper {
+    -fx-background-color: #2a261c;
+    -fx-background-radius: 8;
+}
+
+.drop-tile {
+    -fx-background-color: #1a1e2a;
+    -fx-border-color: #6f778a;
+    -fx-border-style: dashed;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-padding: 10;
+}
+
+.image-tile {
+    -fx-background-color: #243044;
+    -fx-border-color: #5b78f0;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-padding: 10;
+}
+
+.badge-ok {
+    -fx-text-fill: -whisper-ok;
+}
+
+.badge-warn {
+    -fx-text-fill: -whisper-warn;
+}
+
+.badge-bad {
+    -fx-text-fill: -whisper-danger;
+}

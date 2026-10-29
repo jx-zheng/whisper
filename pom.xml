@@ -6,14 +6,15 @@
 
   <groupId>com.jxzheng.whisper</groupId>
   <artifactId>whisper</artifactId>
-  <version>0.9.0</version>
+  <version>1.0.0</version>
   <name>whisper</name>
-  <description>Secure steganographic communication via Zhang-Tang image embedding</description>
+  <description>Adaptive image steganography with authenticated payloads</description>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>21</maven.compiler.release>
     <junit.version>5.11.4</junit.version>
+    <whisper.layout>false</whisper.layout>
     <javafx.version>21.0.13</javafx.version>
   </properties>
 
@@ -34,6 +35,12 @@
       <version>${junit.version}</version>
       <scope>test</scope>
     </dependency>
+    <!-- Argon2id and HKDF-SHA-256. Not registered as a JCA provider. -->
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcprov-jdk18on</artifactId>
+      <version>1.86</version>
+    </dependency>
   </dependencies>
 
   <build>
@@ -47,6 +54,13 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.5.2</version>
+        <configuration>
+          <excludedGroups>bench,mem</excludedGroups>
+          <systemPropertyVariables>
+            <whisper.layout>${whisper.layout}</whisper.layout>
+            <whisper.kdf.test>true</whisper.kdf.test>
+          </systemPropertyVariables>
+        </configuration>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -78,11 +92,43 @@
                   <exclude>org.openjfx:*</exclude>
                 </excludes>
               </artifactSet>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                  </excludes>
+                </filter>
+              </filters>
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <mainClass>com.jxzheng.whisper.Main</mainClass>
                 </transformer>
               </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.5.0</version>
+        <executions>
+          <execution>
+            <id>shaded-jar-help</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <configuration>
+              <executable>java</executable>
+              <arguments>
+                <argument>-jar</argument>
+                <argument>${project.build.directory}/${project.build.finalName}.jar</argument>
+                <argument>--help</argument>
+              </arguments>
             </configuration>
           </execution>
         </executions>
@@ -97,4 +143,38 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>bench</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <excludedGroups combine.self="override"/>
+              <groups>bench</groups>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>mem</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <excludedGroups combine.self="override"/>
+              <groups>mem</groups>
+              <argLine>-Xmx512m</argLine>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

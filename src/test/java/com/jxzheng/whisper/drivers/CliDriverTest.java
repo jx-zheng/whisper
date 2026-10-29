@@ -19,26 +19,35 @@ import org.junit.jupiter.api.io.TempDir;
 
 class CliDriverTest {
 
+    static {
+        System.setProperty("whisper.kdf.test", "true");
+    }
+
     @Test
     void embedExtractAnalyzeRoundTrip(@TempDir Path dir) throws Exception {
         Path cover = dir.resolve("cover.png");
         Path stego = dir.resolve("stego.png");
         Path messageFile = dir.resolve("message.txt");
-        ImageIO.write(noise(64, 64), "png", cover.toFile());
+        ImageIO.write(noise(200, 160), "png", cover.toFile());
         Files.writeString(messageFile, "from-file");
 
         CliDriver driver = new CliDriver();
-        try (Capture ignored = Capture.of()) {
+        try (Capture embed = Capture.of()) {
             assertEquals(0, driver.run(new String[] {
                     "embed", "-i", cover.toString(), "-o", stego.toString(),
-                    "-f", messageFile.toString(), "-k", "cli-key", "-s", "zt"
+                    "-f", messageFile.toString(), "-k", "cli-key", "--kdf", "test"
             }));
+            assertTrue(embed.stderr().contains("Verified"));
+            assertTrue(embed.stderr().contains("SHA-256"));
         }
 
         try (Capture out = Capture.of()) {
-            int extracted = driver.run(new String[] {"extract", "-i", stego.toString(), "-k", "cli-key"});
+            int extracted = driver.run(new String[] {
+                    "extract", "-i", stego.toString(), "-k", "cli-key", "--kdf", "test"
+            });
             assertEquals(0, extracted);
             assertTrue(out.stdout().startsWith("from-file"));
+            assertTrue(out.stderr().contains("Verified"));
         }
 
         try (Capture analysis = Capture.of()) {
@@ -54,16 +63,17 @@ class CliDriverTest {
     void whitespaceKeyRoundTrips(@TempDir Path dir) throws Exception {
         Path cover = dir.resolve("cover.png");
         Path stego = dir.resolve("stego.png");
-        ImageIO.write(noise(48, 48), "png", cover.toFile());
+        ImageIO.write(noise(200, 160), "png", cover.toFile());
 
         CliDriver driver = new CliDriver();
         try (Capture ignored = Capture.of()) {
             assertEquals(0, driver.run(new String[] {
                     "embed", "-i", cover.toString(), "-o", stego.toString(),
-                    "-m", "spaces", "-k", "  "
+                    "-m", "spaces", "-k", "  ", "--kdf", "test"
             }));
             assertEquals(0, driver.run(new String[] {
-                    "extract", "-i", stego.toString(), "-k", "  ", "-o", dir.resolve("out.txt").toString()
+                    "extract", "-i", stego.toString(), "-k", "  ", "--kdf", "test",
+                    "-o", dir.resolve("out.txt").toString()
             }));
         }
         assertEquals("spaces", Files.readString(dir.resolve("out.txt")));
@@ -74,16 +84,19 @@ class CliDriverTest {
         Path cover = dir.resolve("cover.png");
         Path stego = dir.resolve("stego.png");
         Path outFile = dir.resolve("out.txt");
-        ImageIO.write(noise(48, 48), "png", cover.toFile());
+        ImageIO.write(noise(200, 160), "png", cover.toFile());
 
         CliDriver driver = new CliDriver();
-        try (Capture ignored = Capture.of()) {
+        try (Capture note = Capture.of()) {
             assertEquals(0, driver.run(new String[] {
-                    "embed", "-i", cover.toString(), "-o", stego.toString(), "-m", "no-key"
+                    "embed", "-i", cover.toString(), "-o", stego.toString(), "-m", "no-key", "--kdf", "test"
             }));
+            assertTrue(note.stderr().contains("not confidential"));
             assertEquals(0, driver.run(new String[] {
-                    "extract", "-i", stego.toString(), "-k", "", "-o", outFile.toString()
+                    "extract", "-i", stego.toString(), "-k", "", "--kdf", "test", "-o", outFile.toString()
             }));
+            assertTrue(note.stderr().contains("not confidential"));
+            assertFalse(note.stderr().contains("Verified ·"));
         }
         assertEquals("no-key", Files.readString(outFile));
     }
@@ -93,66 +106,65 @@ class CliDriverTest {
         Path cover = dir.resolve("cover.png");
         Path stego = dir.resolve("stego.png");
         Path outFile = dir.resolve("out.txt");
-        ImageIO.write(noise(64, 64), "png", cover.toFile());
+        ImageIO.write(noise(200, 160), "png", cover.toFile());
 
         CliDriver driver = new CliDriver();
         try (Capture ignored = Capture.of()) {
             assertEquals(0, driver.run(new String[] {
                     "embed", "-i", cover.toString(), "-o", stego.toString(),
-                    "-m", "hidden", "-k", "walk", "-e", "-E", "cipher", "-c", "aes"
+                    "-m", "hidden", "-k", "walk", "-E", "cipher", "-c", "aes-256-gcm", "--kdf", "test"
             }));
             assertEquals(0, driver.run(new String[] {
-                    "extract", "-i", stego.toString(), "-k", "walk", "-e", "-E", "cipher",
+                    "extract", "-i", stego.toString(), "-k", "walk", "-E", "cipher", "--kdf", "test",
                     "-o", outFile.toString()
             }));
         }
         assertEquals("hidden", Files.readString(outFile));
 
         try (Capture error = Capture.of()) {
-            assertEquals(1, driver.run(new String[] {
-                    "extract", "-i", stego.toString(), "-k", "walk", "-e", "-E", "walk"
+            assertEquals(2, driver.run(new String[] {
+                    "extract", "-i", stego.toString(), "-k", "walk", "-E", "nope", "--kdf", "test"
             }));
-            assertTrue(error.stderr().toLowerCase(java.util.Locale.ROOT).contains("decrypt"));
+            assertTrue(error.stderr().contains("Wrong encryption"));
         }
         try (Capture error = Capture.of()) {
-            assertEquals(1, driver.run(new String[] {
-                    "extract", "-i", stego.toString(), "-k", "cipher", "-e", "-E", "cipher"
+            assertEquals(3, driver.run(new String[] {
+                    "extract", "-i", stego.toString(), "-k", "cipher", "-E", "cipher", "--kdf", "test"
             }));
-            assertTrue(error.stderr().contains("wrong key"));
+            assertTrue(error.stderr().contains("Nothing found"));
         }
     }
 
     @Test
-    void omittedEncryptKeyUsesPublicEmptyKey(@TempDir Path dir) throws Exception {
+    void omittedEncryptKeyUsesStegoPassphrase(@TempDir Path dir) throws Exception {
         Path cover = dir.resolve("cover.png");
         Path stego = dir.resolve("stego.png");
         Path outFile = dir.resolve("out.txt");
-        ImageIO.write(noise(48, 48), "png", cover.toFile());
+        ImageIO.write(noise(200, 160), "png", cover.toFile());
 
         CliDriver driver = new CliDriver();
-        try (Capture error = Capture.of()) {
+        try (Capture note = Capture.of()) {
             assertEquals(0, driver.run(new String[] {
                     "embed", "-i", cover.toString(), "-o", stego.toString(),
-                    "-m", "public-cipher", "-k", "walk", "-e"
+                    "-m", "single-key", "-k", "walk", "-e", "--kdf", "test"
             }));
-            String err = error.stderr();
-            assertTrue(err.contains("Warning:"));
-            assertTrue(err.contains("not confidential"));
-            assertTrue(err.contains("not used"));
+            assertFalse(note.stderr().contains("not confidential"));
+            assertTrue(note.stderr().contains("Verified ·"));
         }
-        try (Capture error = Capture.of()) {
+        try (Capture note = Capture.of()) {
             assertEquals(0, driver.run(new String[] {
-                    "extract", "-i", stego.toString(), "-k", "walk", "-e", "-o", outFile.toString()
+                    "extract", "-i", stego.toString(), "-k", "walk", "--kdf", "test", "-o", outFile.toString()
             }));
-            assertTrue(error.stderr().contains("not confidential"));
+            assertTrue(note.stderr().contains("Verified ·"));
+            assertFalse(note.stderr().contains("not confidential"));
         }
-        assertEquals("public-cipher", Files.readString(outFile));
+        assertEquals("single-key", Files.readString(outFile));
 
         try (Capture error = Capture.of()) {
-            assertEquals(1, driver.run(new String[] {
-                    "extract", "-i", stego.toString(), "-k", "walk", "-e", "-E", "walk"
+            assertEquals(2, driver.run(new String[] {
+                    "extract", "-i", stego.toString(), "-k", "walk", "-E", "walk", "--kdf", "test"
             }));
-            assertTrue(error.stderr().toLowerCase(java.util.Locale.ROOT).contains("decrypt"));
+            assertTrue(error.stderr().contains("Wrong encryption"));
         }
     }
 
@@ -161,19 +173,19 @@ class CliDriverTest {
         Path cover = dir.resolve("cover.png");
         Path stego = dir.resolve("stego.png");
         Path outFile = dir.resolve("out.txt");
-        ImageIO.write(noise(48, 48), "png", cover.toFile());
+        ImageIO.write(noise(200, 160), "png", cover.toFile());
 
         CliDriver driver = new CliDriver();
-        try (Capture error = Capture.of()) {
+        try (Capture note = Capture.of()) {
             assertEquals(0, driver.run(new String[] {
                     "embed", "-i", cover.toString(), "-o", stego.toString(),
-                    "-m", "open-cipher", "-k", "walk", "-e", "-E", ""
+                    "-m", "open-cipher", "-k", "walk", "-E", "", "--kdf", "test"
             }));
             assertEquals(0, driver.run(new String[] {
-                    "extract", "-i", stego.toString(), "-k", "walk", "-e", "-E", "",
+                    "extract", "-i", stego.toString(), "-k", "walk", "-E", "", "--kdf", "test",
                     "-o", outFile.toString()
             }));
-            assertFalse(error.stderr().contains("omitted"));
+            assertTrue(note.stderr().contains("not confidential"));
         }
         assertEquals("open-cipher", Files.readString(outFile));
     }
@@ -203,8 +215,133 @@ class CliDriverTest {
             int code = new CliDriver().run(new String[] {
                     "embed", "-i", cover.toString(), "-o", stego.toString(), "-m", "x", "-k", "k"
             });
-            assertEquals(0, code);
-            assertTrue(error.stderr().contains("Warning:"));
+            assertEquals(1, code);
+            assertTrue(error.stderr().toLowerCase(java.util.Locale.ROOT).contains("jpg"));
+        }
+    }
+
+    @Test
+    void aes128EmbedIsRejected(@TempDir Path dir) throws Exception {
+        Path cover = dir.resolve("cover.png");
+        Path stego = dir.resolve("stego.png");
+        ImageIO.write(noise(32, 32), "png", cover.toFile());
+        try (Capture error = Capture.of()) {
+            assertEquals(1, new CliDriver().run(new String[] {
+                    "embed", "-i", cover.toString(), "-o", stego.toString(),
+                    "-m", "hi", "-k", "k", "-c", "aes", "--kdf", "test"
+            }));
+            assertTrue(error.stderr().contains("decrypt-only"));
+        }
+    }
+
+    @Test
+    void kdfTestIsNotAProductionChoice(@TempDir Path dir) throws Exception {
+        String previous = System.getProperty("whisper.kdf.test");
+        System.clearProperty("whisper.kdf.test");
+        try {
+            Path cover = dir.resolve("cover.png");
+            Path stego = dir.resolve("stego.png");
+            ImageIO.write(noise(32, 32), "png", cover.toFile());
+            try (Capture error = Capture.of()) {
+                assertEquals(1, new CliDriver().run(new String[] {
+                        "embed", "-i", cover.toString(), "-o", stego.toString(),
+                        "-m", "x", "-k", "k", "--kdf", "test"
+                }));
+                assertTrue(error.stderr().contains("not a production profile"));
+            }
+        } finally {
+            if (previous == null) {
+                System.clearProperty("whisper.kdf.test");
+            } else {
+                System.setProperty("whisper.kdf.test", previous);
+            }
+        }
+    }
+
+    @Test
+    void legacyPlainExtractsWithoutModernFlags(@TempDir Path dir) throws Exception {
+        Path stego = Path.of(CliDriverTest.class.getResource("/fixtures/legacy/zhang-tang-plain.png").toURI());
+        Path out = dir.resolve("out.txt");
+        try (Capture note = Capture.of()) {
+            assertEquals(0, new CliDriver().run(new String[] {
+                    "extract", "-i", stego.toString(), "-k", "legacy-stego-key", "-o", out.toString()
+            }));
+            assertTrue(note.stderr().contains("Unverified (legacy format"));
+        }
+        assertEquals("legacy-plain-v0.9", Files.readString(out));
+    }
+
+    @Test
+    void legacyAesShowsTagOkAndNeverDumpsCiphertext(@TempDir Path dir) throws Exception {
+        Path stego = Path.of(CliDriverTest.class.getResource("/fixtures/legacy/zhang-tang-aes.png").toURI());
+        Path out = dir.resolve("out.txt");
+        try (Capture note = Capture.of()) {
+            assertEquals(0, new CliDriver().run(new String[] {
+                    "extract", "-i", stego.toString(), "-k", "legacy-stego-key",
+                    "-E", "legacy-enc-key", "-o", out.toString()
+            }));
+            assertTrue(note.stderr().contains("AES-GCM tag OK"));
+            assertTrue(note.stdout().isEmpty());
+        }
+        assertEquals("legacy-encrypted-v0.9", Files.readString(out));
+
+        try (Capture error = Capture.of()) {
+            assertEquals(2, new CliDriver().run(new String[] {
+                    "extract", "-i", stego.toString(), "-k", "legacy-stego-key"
+            }));
+            assertTrue(error.stderr().contains("Ciphertext is not shown"), error.stderr());
+            assertTrue(error.stdout().isEmpty());
+            assertFalse(error.stderr().contains("legacy-encrypted-v0.9"));
+        }
+    }
+
+    @Test
+    void legacyAesFlagIsAcceptedOnExtract(@TempDir Path dir) throws Exception {
+        Path stego = Path.of(CliDriverTest.class.getResource("/fixtures/legacy/zhang-tang-aes.png").toURI());
+        Path out = dir.resolve("out.txt");
+        assertEquals(0, new CliDriver().run(new String[] {
+                "extract", "-i", stego.toString(), "-k", "legacy-stego-key",
+                "-c", "aes", "-E", "legacy-enc-key", "-o", out.toString()
+        }));
+        assertEquals("legacy-encrypted-v0.9", Files.readString(out));
+    }
+
+    @Test
+    void legacyEmptyKeyFollowsEncryptFlag(@TempDir Path dir) throws Exception {
+        Path cover = dir.resolve("cover.png");
+        Path stego = dir.resolve("stego.png");
+        ImageIO.write(noise(80, 80), "png", cover.toFile());
+        var embedded = com.jxzheng.whisper.ops.LegacyEmbed.embed(
+                com.jxzheng.whisper.ops.StegoOperations.readImage(cover),
+                "empty-aes".getBytes(StandardCharsets.UTF_8),
+                "walk", true, "");
+        ImageIO.write(embedded.image(), "png", stego.toFile());
+        Path out = dir.resolve("out.txt");
+        try (Capture note = Capture.of()) {
+            assertEquals(0, new CliDriver().run(new String[] {
+                    "extract", "-i", stego.toString(), "-k", "walk", "-e", "-o", out.toString()
+            }));
+            assertTrue(note.stderr().contains("AES-GCM tag OK"), note.stderr());
+        }
+        assertEquals("empty-aes", Files.readString(out));
+        Path aesOut = dir.resolve("aes-flag.txt");
+        assertEquals(0, new CliDriver().run(new String[] {
+                "extract", "-i", stego.toString(), "-k", "walk", "-c", "aes", "-o", aesOut.toString()
+        }));
+        assertEquals("empty-aes", Files.readString(aesOut));
+    }
+
+    @Test
+    void zhangTangEmbedIsRejected(@TempDir Path dir) throws Exception {
+        Path cover = dir.resolve("cover.png");
+        Path stego = dir.resolve("stego.png");
+        ImageIO.write(noise(32, 32), "png", cover.toFile());
+        try (Capture error = Capture.of()) {
+            assertEquals(1, new CliDriver().run(new String[] {
+                    "embed", "-i", cover.toString(), "-o", stego.toString(),
+                    "-m", "hi", "-k", "k", "-s", "zhang-tang", "--kdf", "test"
+            }));
+            assertTrue(error.stderr().contains("decrypt-only"));
         }
     }
 
@@ -217,6 +354,7 @@ class CliDriverTest {
             assertTrue(text.contains("PNG or BMP"));
             assertTrue(text.contains("encrypt-key"));
             assertFalse(text.contains("also used as cipher"));
+            assertFalse(text.contains("inspect"));
             assertFalse(text.contains("gui"));
             assertFalse(text.contains("<<<<<<<"));
             assertFalse(text.contains(">>>>>>>"));
