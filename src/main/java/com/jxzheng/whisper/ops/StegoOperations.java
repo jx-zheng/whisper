@@ -13,13 +13,16 @@ import javax.imageio.ImageIO;
 
 import com.jxzheng.whisper.analysis.ChiSquareAnalyzer;
 import com.jxzheng.whisper.analysis.RsAnalyzer;
+import com.jxzheng.whisper.carrier.Carrier;
+import com.jxzheng.whisper.crypto.CipherRegistry;
 import com.jxzheng.whisper.encryption.AesCipher;
 import com.jxzheng.whisper.encryption.CipherService;
 import com.jxzheng.whisper.exceptions.EncryptionException;
 import com.jxzheng.whisper.exceptions.MessageTooLongException;
 import com.jxzheng.whisper.media.ImageFormats;
 import com.jxzheng.whisper.schemes.AbstractScheme;
-import com.jxzheng.whisper.schemes.ZhangTangScheme;
+import com.jxzheng.whisper.schemes.EmbedOptions;
+import com.jxzheng.whisper.schemes.SchemeRegistry;
 
 /**
  * Embed, extract, and analyze entry points shared by the CLI and the desktop app.
@@ -30,11 +33,11 @@ public final class StegoOperations {
     public static final String DEFAULT_CIPHER = "aes";
 
     public List<String> schemes() {
-        return List.of(DEFAULT_SCHEME);
+        return SchemeRegistry.shared().ids();
     }
 
     public List<String> ciphers() {
-        return List.of(DEFAULT_CIPHER);
+        return CipherRegistry.shared().ids();
     }
 
     public record EmbedResult(BufferedImage image, int payloadBytes) {
@@ -77,7 +80,10 @@ public final class StegoOperations {
             throw new MessageTooLongException(
                     "Message exceeds max message length of " + AbstractScheme.MAX_PAYLOAD_LENGTH);
         }
-        BufferedImage stego = createScheme(scheme, cover, walkKey).embedMessage(payload);
+        BufferedImage stego = SchemeRegistry.shared()
+                .require(scheme)
+                .embed(Carrier.of(cover), payload, null, EmbedOptions.legacy(walkKey), Progress.NONE)
+                .image();
         return new EmbedResult(stego, payload.length);
     }
 
@@ -102,7 +108,9 @@ public final class StegoOperations {
         if (decrypt) {
             createCipher(cipher);
         }
-        byte[] payload = createScheme(scheme, stego, walkKey).extractMessage();
+        byte[] payload = SchemeRegistry.shared()
+                .require(scheme)
+                .extract(Carrier.of(stego), null, EmbedOptions.legacy(walkKey));
         if (decrypt) {
             payload = createCipher(cipher).decrypt(payload, cipherKey);
         }
@@ -210,14 +218,6 @@ public final class StegoOperations {
                 : "";
         return new MessageTooLongException(
                 "Message needs " + packaged + " embedded byte(s) but this image can hold " + max + "." + extra);
-    }
-
-    private static AbstractScheme createScheme(String scheme, BufferedImage image, String key) {
-        String name = canonicalScheme(scheme);
-        return switch (name) {
-            case "zhang-tang" -> new ZhangTangScheme(image, key);
-            default -> throw new IllegalArgumentException("Unsupported scheme: " + name);
-        };
     }
 
     private static String canonicalScheme(String scheme) {

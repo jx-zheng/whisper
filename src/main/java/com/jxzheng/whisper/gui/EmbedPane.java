@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import com.jxzheng.whisper.carrier.CarrierCache;
 import com.jxzheng.whisper.encryption.AesCipher;
 import com.jxzheng.whisper.media.ImageFormats;
 import com.jxzheng.whisper.ops.AnalysisFormat;
@@ -33,6 +34,7 @@ final class EmbedPane extends BorderPane {
     private final StegoOperations operations;
     private final StatusBar status;
     private final Handoff handoff;
+    private final CarrierCache covers = new CarrierCache();
 
     private final ImageCard imageCard = new ImageCard();
     private final TextField coverField = new TextField();
@@ -255,7 +257,7 @@ final class EmbedPane extends BorderPane {
             return;
         }
         Background.start("whisper-cover", () -> {
-            BufferedImage image = StegoOperations.readImage(path);
+            BufferedImage image = covers.load(path);
             return new CoverLoad(
                     FxImages.scale(image, FxImages.PREVIEW_EDGE),
                     image.getWidth(),
@@ -358,7 +360,7 @@ final class EmbedPane extends BorderPane {
         status.run("Embedding…", new Task<EmbedDone>() {
             @Override
             protected EmbedDone call() throws Exception {
-                BufferedImage image = StegoOperations.readImage(cover);
+                BufferedImage image = covers.load(cover);
                 byte[] message = fromFile
                         ? StegoOperations.readMessageFile(messageFile)
                         : messageText.getBytes(StandardCharsets.UTF_8);
