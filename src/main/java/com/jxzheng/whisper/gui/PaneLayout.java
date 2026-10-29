@@ -1,19 +1,18 @@
 package com.jxzheng.whisper.gui;
 
-import javafx.application.Platform;
 import javafx.geometry.Insets;
-import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
-import javafx.scene.shape.Rectangle;
 
 /**
  * Shared resize behavior for Embed, Extract, and Analyze.
  *
  * <p>The preview sits beside the form while the window is wide enough, and
  * moves above the form when it is not. Two thresholds keep a drag across the
- * boundary from flipping layout on every pixel.
+ * boundary from flipping layout on every pixel. Width and height are written
+ * only when they move by at least one pixel, so a drag does not restyle the
+ * scene on every event.
  */
 final class PaneLayout {
 
@@ -21,6 +20,8 @@ final class PaneLayout {
     private static final double STACK_BELOW = 760;
     /** Stay stacked until the window is clearly wide enough to sit side by side. */
     private static final double UNSTACK_ABOVE = 840;
+    private static final Insets STACKED_MARGIN = new Insets(0, 0, 16, 0);
+    private static final Insets BESIDE_MARGIN = new Insets(0, 16, 0, 0);
 
     private PaneLayout() {
     }
@@ -35,45 +36,31 @@ final class PaneLayout {
         imageColumn.setFillWidth(true);
         imageColumn.setMinWidth(0);
         imageColumn.setMaxHeight(Double.MAX_VALUE);
-        clipToBounds(imageColumn);
 
         double column = Math.min(420, Math.max(260, width * 0.34));
         boolean layoutChanged = stack ? pane.getTop() != imageColumn : pane.getLeft() != imageColumn;
-        if (stack) {
-            if (layoutChanged) {
+        if (layoutChanged) {
+            if (stack) {
                 pane.setLeft(null);
                 pane.setTop(imageColumn);
-            }
-            imageColumn.setPrefWidth(Region.USE_COMPUTED_SIZE);
-            imageColumn.setMaxWidth(Double.MAX_VALUE);
-            BorderPane.setMargin(imageColumn, new Insets(0, 0, 16, 0));
-        } else {
-            if (layoutChanged) {
+                imageColumn.setPrefWidth(Region.USE_COMPUTED_SIZE);
+                imageColumn.setMaxWidth(Double.MAX_VALUE);
+                BorderPane.setMargin(imageColumn, STACKED_MARGIN);
+            } else {
                 pane.setTop(null);
                 pane.setLeft(imageColumn);
+                imageColumn.setPrefWidth(column);
+                imageColumn.setMaxWidth(column);
+                BorderPane.setMargin(imageColumn, BESIDE_MARGIN);
             }
+            preview.adapt(stack, stack ? width : column);
+        } else if (!stack && Math.abs(imageColumn.getPrefWidth() - column) >= 1) {
             imageColumn.setPrefWidth(column);
             imageColumn.setMaxWidth(column);
-            BorderPane.setMargin(imageColumn, new Insets(0, 16, 0, 0));
+            preview.adapt(false, column);
         }
         if (pane.getCenter() != form) {
             pane.setCenter(form);
         }
-        preview.adapt(stack, stack ? width : column);
-        preview.setMaxWidth(stack ? Double.MAX_VALUE : column);
-        if (layoutChanged && pane.getParent() instanceof ScrollPane scroll) {
-            Platform.runLater(() -> scroll.setVvalue(0));
-        }
-    }
-
-    /** Stops the preview card from painting over the form when its pref width is large. */
-    private static void clipToBounds(VBox column) {
-        if (column.getClip() instanceof Rectangle) {
-            return;
-        }
-        Rectangle clip = new Rectangle();
-        clip.widthProperty().bind(column.widthProperty());
-        clip.heightProperty().bind(column.heightProperty());
-        column.setClip(clip);
     }
 }

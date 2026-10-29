@@ -388,7 +388,7 @@ final class EmbedPane extends BorderPane {
             imageCard.setWarning(done.warning());
             usedOutput = output;
             usedStegoKey = stegoKey;
-            usedEncryptKey = encryptPassphrase.getText();
+            usedEncryptKey = encrypt ? encryptKey : "";
             usedEncrypt = encrypt;
             usedScheme = scheme == null ? StegoOperations.DEFAULT_SCHEME : scheme;
             usedCipher = cipher == null ? StegoOperations.DEFAULT_CIPHER : cipher;

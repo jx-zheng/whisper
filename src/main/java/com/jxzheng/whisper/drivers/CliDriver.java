@@ -209,17 +209,20 @@ public class CliDriver {
     }
 
     /**
-     * Required when {@code -e} is set. Never falls back to {@code -k}.
-     * An empty value is the public empty-string AES-GCM key.
+     * Never falls back to {@code -k}. A missing or empty {@code -E} is the public
+     * empty-string AES-GCM key. Omitting the flag prints a warning because that
+     * key authenticates the payload and does not keep it confidential.
      */
     private static String encryptKey(CommandLine cl, boolean encrypt) {
         if (!encrypt) {
             return null;
         }
         if (!cl.hasOption("encrypt-key")) {
-            throw new IllegalArgumentException(
-                    "Missing --encrypt-key. Encryption does not reuse the stego key (-k). "
-                            + "Pass --encrypt-key; an empty value uses the public empty-string AES-GCM key.");
+            System.err.println(
+                    "Warning: --encrypt-key was omitted. Using the public empty-string AES-GCM key. "
+                            + "The payload is authenticated but not confidential. "
+                            + "The stego key (-k) is not used as the encryption passphrase.");
+            return "";
         }
         String value = cl.getOptionValue("encrypt-key");
         return value == null ? "" : value;
@@ -243,8 +246,9 @@ public class CliDriver {
                 """
                 The stego key (-k) and the encryption passphrase (-E) are independent.
                 Omit -k, or pass an empty value, for the public empty-string pixel walk.
-                -e encrypts only the hidden message. It requires -E and does not reuse -k.
-                An empty -E is a valid AES-GCM key and is not confidential.
+                -e encrypts only the hidden message and does not reuse -k.
+                Omit -E, or pass an empty value, for the public empty-string AES-GCM key.
+                That key authenticates the payload and is not confidential. Omitting -E prints a warning.
                 The stego file stays a normal PNG or BMP.
 
                 Examples:
@@ -274,14 +278,15 @@ public class CliDriver {
                 .desc("Cipher to use with -e (default: aes)").build());
         options.addOption(Option.builder("e").longOpt("encrypt")
                 .desc("Encrypt the message payload before embed / decrypt after extract. "
-                        + "Does not encrypt the image. Requires --encrypt-key; -k is not reused.").build());
+                        + "Does not encrypt the image. Does not reuse -k. "
+                        + "Without --encrypt-key, uses the public empty-string AES-GCM key.").build());
         options.addOption(Option.builder("k").longOpt("key").hasArg().argName("key")
                 .desc("Stego / pixel-walk key. Optional. Omitted or empty uses the public "
                         + "empty-string walk.").build());
         options.addOption(Option.builder("E").longOpt("encrypt-key").hasArg().argName("key")
                 .desc("Encryption passphrase (PBKDF2 to AES-GCM) for the payload only. "
-                        + "Required with -e. Not copied from -k. An empty value is the public "
-                        + "empty-string cipher key.").build());
+                        + "Not copied from -k. Omitted or empty is the public empty-string cipher key. "
+                        + "Omitting it with -e prints a warning.").build());
         options.addOption(Option.builder("h").longOpt("help").desc("Show usage information").build());
         return options;
     }

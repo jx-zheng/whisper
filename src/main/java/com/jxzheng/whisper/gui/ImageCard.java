@@ -34,14 +34,18 @@ final class ImageCard extends VBox {
     };
     private Runnable onBrowse = () -> {
     };
+    private boolean adapted;
+    private boolean adaptedStacked;
 
     ImageCard() {
         super(8);
         getStyleClass().add("card");
         frame.getStyleClass().add("preview-frame");
+        frame.setMinWidth(0);
         frame.setMinHeight(140);
         frame.setPrefHeight(200);
         frame.setMaxWidth(Double.MAX_VALUE);
+        setMinWidth(0);
         frame.setAlignment(Pos.CENTER);
         frame.setCursor(Cursor.HAND);
         imageView.setPreserveRatio(true);
@@ -56,6 +60,7 @@ final class ImageCard extends VBox {
         placeholder.setMouseTransparent(true);
         placeholder.setTextAlignment(TextAlignment.CENTER);
         placeholder.setAlignment(Pos.CENTER);
+        placeholder.setMinWidth(0);
         placeholder.setMaxWidth(220);
         frame.getChildren().addAll(imageView, placeholder);
 
@@ -90,19 +95,35 @@ final class ImageCard extends VBox {
     /**
      * Stacked layout keeps a short preview so the form stays on screen.
      * Side by side, the preview grows with the column and with leftover height.
+     * Callers should skip this unless the mode flipped or the column width moved by a pixel.
      */
     void adapt(boolean stacked, double columnWidth) {
-        if (stacked) {
-            VBox.setVgrow(frame, Priority.NEVER);
-            frame.setMinHeight(120);
-            frame.setPrefHeight(168);
-            frame.setMaxHeight(168);
-        } else {
-            VBox.setVgrow(frame, Priority.ALWAYS);
-            frame.setMaxHeight(Double.MAX_VALUE);
-            frame.setMinHeight(160);
-            double preferred = columnWidth > 0 ? columnWidth * 0.72 : 220;
-            frame.setPrefHeight(Math.min(340, Math.max(200, preferred)));
+        if (!adapted || adaptedStacked != stacked) {
+            adapted = true;
+            adaptedStacked = stacked;
+            if (stacked) {
+                VBox.setVgrow(frame, Priority.NEVER);
+                frame.setMinHeight(120);
+                frame.setPrefHeight(168);
+                frame.setMaxHeight(168);
+            } else {
+                VBox.setVgrow(frame, Priority.ALWAYS);
+                frame.setMaxHeight(Double.MAX_VALUE);
+                frame.setMinHeight(160);
+                applySideHeight(columnWidth);
+            }
+            return;
+        }
+        if (!stacked) {
+            applySideHeight(columnWidth);
+        }
+    }
+
+    private void applySideHeight(double columnWidth) {
+        double preferred = columnWidth > 0 ? columnWidth * 0.72 : 220;
+        double height = Math.min(340, Math.max(200, preferred));
+        if (Math.abs(frame.getPrefHeight() - height) >= 1) {
+            frame.setPrefHeight(height);
         }
     }
 

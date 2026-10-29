@@ -8,7 +8,9 @@ The scheme hides each secret bit `m` in a color-channel sample `c` relative to t
 
 The stego passphrase is optional. Omit `-k`, leave it empty, or leave the Stego passphrase field blank to use the public default walk: PBKDF2-HMAC-SHA256 of the empty string with the fixed salt `whisper-stego-prng-v1`. That walk is not a secret — anyone can extract. HMAC-SHA256 rejects a zero-length key, so the length-header tag for this default uses the same PBKDF2 output. A non-empty stego passphrase still keys that tag with the raw UTF-8 passphrase. Spaces are a real passphrase; only a missing or empty value selects the default.
 
-Optional AES-128-GCM encrypts the hidden message before embedding. The stego file stays a normal PNG or BMP; the container is not encrypted. The **encryption passphrase** is separate from the stego key. Pass it with `-E` / `--encrypt-key` (or the Encryption passphrase field). It is never copied from `-k`. `-e` requires `--encrypt-key`. An empty value (`-E ""`, or a blank field) is a valid AES-GCM key: PBKDF2 of the empty password with a random salt, plus the usual IV and tag. That key is public and does not provide confidentiality.
+Optional AES-128-GCM encrypts the hidden message before embedding. The stego file stays a normal PNG or BMP; the container is not encrypted. The **encryption passphrase** is separate from the stego key. Pass it with `-E` / `--encrypt-key` (or the Encryption passphrase field). It is never copied from `-k`. Omit `-E`, pass `-E ""`, or leave the field blank to use the public empty-string AES-GCM key: PBKDF2 of the empty password with a random salt, plus the usual IV and tag. That key authenticates the payload and does not provide confidentiality. Omitting `-E` while `-e` is set prints a warning on stderr. An explicit `-E ""` does the same derivation without the warning.
+
+Older builds used `-k` for both the pixel walk and AES-GCM. Extract those images with the same string on both flags: `extract -k K -e -E K`.
 
 Pixel walks use a PBKDF2-stretched HMAC-SHA256 counter PRNG (not `String.hashCode()`). This changes walks vs earlier builds — re-embed existing messages. Use `-e` with an encryption passphrase when confidentiality matters.
 Passphrases on the command line may be visible to other local users — prefer a private shell history.
@@ -71,7 +73,7 @@ java -jar target/whisper-0.9.0.jar analyze -i stego.png
 | `-f, --message-file` | Read embed message from a file |
 | `-k, --key` | Stego / pixel-walk key. Optional. Omitted or empty uses the public empty-string walk |
 | `-e, --encrypt` | Encrypt the message payload before embed / decrypt after extract. Does not encrypt the image |
-| `-E, --encrypt-key` | Encryption passphrase (PBKDF2 → AES-GCM) for the payload only. Required with `-e`. Not copied from `-k`. Empty (`-E ""`) is the public empty-string cipher key |
+| `-E, --encrypt-key` | Encryption passphrase (PBKDF2 → AES-GCM) for the payload only. Not copied from `-k`. Omitted or empty (`-E ""`) is the public empty-string cipher key. Omitting it with `-e` prints a warning |
 | `-s, --scheme` | Scheme name (default: `zhang-tang`) |
 | `-c, --cipher` | Cipher name when `-e` is set (default: `aes`) |
 | `-h, --help` | Usage help |
