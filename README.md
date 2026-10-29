@@ -53,7 +53,7 @@ A JPEG's room depends on how many nonzero AC coefficients it has, not on its pix
 - **File.** Any bytes. `--file report.pdf`. The sanitized base name is stored so Extract can suggest it.
 - **Image.** `--image secret.png`. If it does not fit, `--fit-quality 75 --fit-max-edge 1024` re-encodes a smaller JPEG copy of the *hidden* image. The cover is not re-encoded.
 
-Passphrases: `-k` is the stego passphrase. `-E` / `--encrypt-key` is a separate encryption passphrase. Omit `-E` and the stego passphrase is used for both. New embeds use ChaCha20-Poly1305 or AES-256-GCM. `--kdf high` uses the 2 GiB Argon2id profile.
+Passphrases: `-k` is the stego passphrase. `-E` / `--encrypt-key` is a separate encryption passphrase. Omit `-E` and the stego passphrase is used for both. New embeds use ChaCha20-Poly1305 or AES-256-GCM. `--kdf high` uses the 2 GiB Argon2id profile and is command-line only. Extracting a `--kdf high` embed needs `--kdf high` again, and enough heap for that profile.
 
 ## Verification
 
@@ -86,7 +86,7 @@ java -jar target/whisper-1.0.0.jar extract -i old.png -k "legacy-stego-key"
 java -jar target/whisper-1.0.0.jar extract -i old.png -k "legacy-stego-key" -e -E "legacy-enc-key"
 ```
 
-They are labelled unverified. Re-embed with `hill-stc` or `uerd-stc` if you want the content hash. New Zhang–Tang embeds that opt into a modern cipher use the v2 frame. The old `-e -c aes` path is unchanged.
+They are labelled unverified. Zhang–Tang and AES-128-GCM are extract-only: new embeds do not write that format. Re-embed with `hill-stc` or `uerd-stc` if you want the content hash. `-e` without `-E` tries the public empty legacy key. `-c aes` on extract is the same legacy hint.
 
 ## Build, test, bench
 

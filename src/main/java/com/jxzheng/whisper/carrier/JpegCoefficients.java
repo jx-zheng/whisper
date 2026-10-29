@@ -266,13 +266,13 @@ public final class JpegCoefficients {
         byte[] entropy = encodeScan();
         int size = 2 + entropy.length + 2;
         for (Segment seg : prefix) {
-            if (keepMeta || seg.marker != 0xE1) {
+            if (keepJpegSegment(seg.marker, keepMeta)) {
                 size += seg.raw.length;
             }
         }
         size += sos.raw.length;
         for (Segment seg : suffix) {
-            if (keepMeta || seg.marker != 0xE1) {
+            if (keepJpegSegment(seg.marker, keepMeta)) {
                 size += seg.raw.length;
             }
         }
@@ -291,9 +291,23 @@ public final class JpegCoefficients {
         return out;
     }
 
+    /** Without metadata, keep APP0, APP2 (ICC), APP14 (Adobe), and the coding segments. */
+    private static boolean keepJpegSegment(int marker, boolean keepMeta) {
+        if (keepMeta) {
+            return true;
+        }
+        if (marker == 0xFE) {
+            return false;
+        }
+        if (marker >= 0xE0 && marker <= 0xEF) {
+            return marker == 0xE0 || marker == 0xE2 || marker == 0xEE;
+        }
+        return true;
+    }
+
     private static int append(byte[] out, int p, List<Segment> segs, boolean keepMeta) {
         for (Segment seg : segs) {
-            if (!keepMeta && seg.marker == 0xE1) {
+            if (!keepJpegSegment(seg.marker, keepMeta)) {
                 continue;
             }
             System.arraycopy(seg.raw, 0, out, p, seg.raw.length);

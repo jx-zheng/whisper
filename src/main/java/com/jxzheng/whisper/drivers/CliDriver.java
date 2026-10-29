@@ -82,12 +82,16 @@ public class CliDriver {
             printHelp();
             return 1;
         } catch (OutOfMemoryError e) {
-            if ("extract".equals(command)) {
-                System.err.println("Out of memory. The sender used the high Argon2id profile. "
-                        + "Rerun with more heap, for example JAVA_TOOL_OPTIONS=-Xmx3g.");
+            if (kdfHigh(commandArgs)) {
+                if ("extract".equals(command)) {
+                    System.err.println("Out of memory. The sender used the high Argon2id profile. "
+                            + "Rerun with more heap, for example JAVA_TOOL_OPTIONS=-Xmx3g.");
+                } else {
+                    System.err.println(
+                            "Out of memory. The high Argon2id profile needs about 2 GiB of RAM. Use --kdf default.");
+                }
             } else {
-                System.err.println(
-                        "Out of memory. The high Argon2id profile needs about 2 GiB of RAM. Use --kdf default.");
+                System.err.println("Out of memory. Give Java more heap, or use a smaller cover.");
             }
             return 1;
         } catch (Exception e) {
@@ -282,7 +286,7 @@ public class CliDriver {
             content = Files.readAllBytes(image);
             kind = PayloadKind.IMAGE;
             name = image.getFileName().toString();
-            mime = "image/png";
+            mime = MimeSniffer.mime(content);
             if (cl.hasOption("fit-quality") || cl.hasOption("fit-max-edge")) {
                 int quality = Integer.parseInt(cl.getOptionValue("fit-quality", "75"));
                 int edge = Integer.parseInt(cl.getOptionValue("fit-max-edge", "0"));
@@ -381,6 +385,14 @@ public class CliDriver {
             }
         }
         return CipherRegistry.suite(cipher);
+    }
+
+    private boolean kdfHigh(String[] commandArgs) {
+        try {
+            return kdf(new DefaultParser().parse(options, commandArgs)) == KdfProfile.HIGH;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static KdfProfile kdf(CommandLine cl) {

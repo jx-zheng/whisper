@@ -139,7 +139,7 @@ public final class PayloadOps {
                 outcome = switch (scheme) {
                     case "hill-stc" -> revealHill(file, format, stego, enc, split, profile);
                     case "uerd-stc" -> revealUerd(file, stego, enc, split, profile);
-                    default -> revealZhang(file, stego, enc, split, profile, true, legacyEmpty);
+                    default -> revealZhang(file, stego, enc, legacyEmpty);
                 };
             }
             return confidentiality(outcome, stego, enc, split);
@@ -187,7 +187,7 @@ public final class PayloadOps {
         return switch (scheme) {
             case "hill-stc" -> revealHill(stego, sniff(stego), Secrets.copy(pass), Secrets.copy(enc), split, profile);
             case "uerd-stc" -> revealUerd(stego, Secrets.copy(pass), Secrets.copy(enc), split, profile);
-            default -> revealZhang(stego, Secrets.copy(pass), Secrets.copy(enc), split, profile, false, false);
+            default -> revealZhang(stego, Secrets.copy(pass), Secrets.copy(enc), false);
         };
     }
 
@@ -249,18 +249,12 @@ public final class PayloadOps {
     }
 
     /**
-     * A Zhang–Tang false accept must not hide a HILL payload. A failed legacy
-     * result is a miss; HILL is tried next, and the legacy message is used only
-     * if HILL also misses. A v2 authentication failure stops the search.
+     * A Zhang–Tang hit is always the 0.9 layout. It is a miss for auto until
+     * HILL also misses, so a false header does not hide a modern payload.
      */
     private Outcome revealAutoRaster(
             byte[] file, String format, char[] stego, char[] enc, boolean split, KdfProfile profile, boolean legacyEmpty) {
-        Outcome zhang = revealZhang(file, stego, enc, split, profile, true, legacyEmpty);
-        boolean v2 = zhang.ok() && !zhang.legacy();
-        boolean v2Auth = !zhang.ok() && zhang.exitCode() == 2 && zhang.schemeId() == null;
-        if (v2 || v2Auth) {
-            return zhang;
-        }
+        Outcome zhang = revealZhang(file, stego, enc, legacyEmpty);
         Outcome hill = revealHill(file, format, stego, enc, split, profile);
         if (hill.ok() || hill.exitCode() == 2) {
             return hill;
@@ -271,19 +265,14 @@ public final class PayloadOps {
         return hill;
     }
 
-    private Outcome revealZhang(
-            byte[] file, char[] stego, char[] enc, boolean split, KdfProfile profile, boolean allowLegacy, boolean legacyEmpty) {
+    private Outcome revealZhang(byte[] file, char[] stego, char[] enc, boolean legacyEmpty) {
         try {
             var image = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(file));
             if (image == null) {
                 return fail(3, VerifyMessages.NOTHING_FOUND);
             }
             byte[] blob = new ZhangTangScheme(image, new String(stego == null ? new char[0] : stego)).extractMessage();
-            Outcome opened = openBlob(blob, null, null, stego, enc, split, profile, "zhang-tang", "Legacy (high capacity)");
-            if (opened == null) {
-                return allowLegacy ? legacyPayload(blob, enc, legacyEmpty) : fail(3, VerifyMessages.NOTHING_FOUND);
-            }
-            return opened;
+            return legacyPayload(blob, enc, legacyEmpty);
         } catch (CorruptOrInvalidStegoImageException | MessageTooLongException | java.io.IOException e) {
             return fail(3, VerifyMessages.NOTHING_FOUND);
         }
@@ -346,7 +335,7 @@ public final class PayloadOps {
                     "zhang-tang", "legacy", true, false);
         }
         if (blob.length >= 44) {
-            return legacyFail(2, "This looks like a legacy encrypted payload. Pass -e or -E. Ciphertext is not shown.");
+            return legacyFail(2, "This looks like a legacy encrypted payload. Enter the encryption passphrase. Ciphertext is not shown.");
         }
         return legacyFail(2, "Unverified legacy bytes are not text and did not decrypt. Nothing is shown.");
     }
@@ -414,14 +403,15 @@ public final class PayloadOps {
     private static String authMessage(AuthException error) {
         String text = error.getMessage() == null ? "" : error.getMessage();
         if (text.contains("kdf profile")) {
-            return "This payload used a different KDF profile. High needs about 2 GiB of RAM; retry with --kdf high.";
+            return "This image may have been embedded with the high-memory key profile. Opening it needs about 2 GiB of RAM.";
         }
         return VerifyMessages.WRONG_ENCRYPTION;
     }
 
     private static String nothingFound(KdfProfile profile) {
         if (profile == KdfProfile.DEFAULT) {
-            return VerifyMessages.NOTHING_FOUND + " If the sender used --kdf high, retry with --kdf high.";
+            return VerifyMessages.NOTHING_FOUND
+                    + " If the sender used the high-memory key profile, opening it needs about 2 GiB of RAM.";
         }
         return VerifyMessages.NOTHING_FOUND;
     }

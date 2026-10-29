@@ -1,5 +1,6 @@
 package com.jxzheng.whisper.payload;
 
+import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
@@ -37,12 +38,16 @@ public final class ImageFit {
             height = Math.max(1, (int) Math.round(image.getHeight() * scale));
             BufferedImage scaled = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
             Graphics2D g = scaled.createGraphics();
+            g.setColor(Color.WHITE);
+            g.fillRect(0, 0, width, height);
             g.drawImage(image, 0, 0, width, height, null);
             g.dispose();
             image = scaled;
         } else if (image.getColorModel().hasAlpha()) {
             BufferedImage flat = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
             Graphics2D g = flat.createGraphics();
+            g.setColor(Color.WHITE);
+            g.fillRect(0, 0, width, height);
             g.drawImage(image, 0, 0, null);
             g.dispose();
             image = flat;

@@ -13,31 +13,31 @@ gui  →  ops  →  schemes / crypto / payload / carrier
 
 | Package | Role |
 |---|---|
-| `crypto` | Argon2id, HKDF-SHA-256, ChaCha20-Poly1305, AES-256-GCM, HMAC integrity mode, age-style STREAM, v2 envelope |
+| `crypto` | Argon2id, HKDF-SHA-256, ChaCha20-Poly1305, AES-256-GCM, age-style STREAM, v2 envelope |
 | `payload` | Text / file / image frame, SHA-256 inside the frame, name sanitizing, MIME sniff, fit-to-capacity |
-| `schemes` | `StegoScheme` plus Zhang–Tang, `hill-stc`, and `uerd-stc` |
+| `schemes` | `StegoScheme`, `hill-stc`, and `uerd-stc`. Zhang–Tang is extract-only for Whisper 0.9 images |
 | `schemes.stc` | Clean-room binary syndrome-trellis code |
 | `schemes.permute` | ChaCha20 Fisher–Yates visit order |
 | `schemes.framing` | Public salt spread, then keyed length and payload |
 | `schemes.costs` | HILL and UERD |
 | `carrier` | PNG, BMP, and baseline JPEG coefficient codec |
-| `ops` | Hide, reveal, legacy embed/extract, atomic write |
+| `ops` | Hide, reveal, legacy extract, atomic write |
 | `drivers` | CLI |
 | `gui` | JavaFX Embed, Extract, and Analyze |
 | `analysis` | Chi-square and RS |
 
 ## Add a scheme
 
-1. Implement `StegoScheme` (`id`, `info`, `accepts`, `estimate`, `embed`, `extract`, `publicSalt`).
+1. Implement `StegoScheme` (`id`, `embed`, `extract`).
 2. `embed` must read the payload back and refuse to return a carrier that does not match. Write the file with `AtomicFiles` from `ops`, not from the scheme.
 3. Register the instance in `SchemeRegistry`. The Embed combo lists registry ids. No new UI code is required for the combo itself.
 4. If the scheme needs a new container, teach `PayloadOps` and `ImageFormats` which extension is safe. JPEG output is allowed only for a coefficient-domain scheme.
 
 ## Add a cipher
 
-1. Implement `AeadSuite` with a distinct `suiteBits` value (0 ChaCha, 1 AES-GCM, 2 integrity-only, 3 reserved).
-2. Register the id in `CipherRegistry`.
-3. Map the id in `CliDriver.suite` and the Embed cipher combo. `Envelope` already frames STREAM for suites 0 and 1 and HMAC for suite 2.
+1. Implement `AeadSuite` with a distinct `suiteBits` value (0 ChaCha, 1 AES-256-GCM, 3 reserved).
+2. Register the id in `CipherRegistry`. New embeds use only those ids.
+3. `Envelope` frames every suite with STREAM. AES-128-GCM is not a new-embed suite; `LegacyAes128GcmPbkdf2` decrypts Whisper 0.9 payloads.
 
 ## Add a payload kind
 
@@ -55,4 +55,4 @@ encMaster   = stegoMaster                         // one passphrase
 payloadKey  = HKDF(HKDF(encMaster, "whisper v2 aead"), file nonce, "whisper v2 payload")
 ```
 
-Legacy Zhang–Tang walks still use `KeyedPrng` (PBKDF2). That path does not use the visit seed. AES-128-GCM/PBKDF2 is decrypt-only via `LegacyAes128GcmPbkdf2`.
+Zhang–Tang is extract-only. Its pixel walk still uses `KeyedPrng` (PBKDF2) and does not use the visit seed. AES-128-GCM/PBKDF2 is decrypt-only via `LegacyAes128GcmPbkdf2`. New embeds do not write either format.

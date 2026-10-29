@@ -11,6 +11,7 @@ import com.jxzheng.whisper.crypto.Envelope;
 import com.jxzheng.whisper.crypto.KdfProfile;
 import com.jxzheng.whisper.media.ImageFormats;
 import com.jxzheng.whisper.payload.ImageFit;
+import com.jxzheng.whisper.payload.MimeSniffer;
 import com.jxzheng.whisper.payload.PayloadKind;
 import com.jxzheng.whisper.schemes.RatePreset;
 import com.jxzheng.whisper.ops.AnalysisFormat;
@@ -486,7 +487,7 @@ final class EmbedPane extends BorderPane {
             kind = PayloadKind.IMAGE;
             content = Files.readAllBytes(job.messageFile());
             name = job.messageFile().getFileName() == null ? "image" : job.messageFile().getFileName().toString();
-            mime = "image/png";
+            mime = MimeSniffer.mime(content);
             if (job.fit()) {
                 ImageFit.Result fit = ImageFit.fit(content, 75, 1024);
                 content = fit.bytes();

@@ -36,6 +36,7 @@ public final class HillStcScheme implements StegoScheme {
         RasterImage image = copy(raster(cover));
         byte[] pixels = greenBytes(image);
         float[] costs = HillCost.floats(pixels, image.width, image.height);
+        wetTransparency(image, costs);
         int[] samples = new int[pixels.length];
         for (int i = 0; i < pixels.length; i++) {
             samples[i] = pixels[i] & 0xff;
@@ -124,6 +125,55 @@ public final class HillStcScheme implements StegoScheme {
             }
             image.samples[i * spp + off] = (byte) v;
         }
+    }
+
+    /** A ±1 change must not cross a tRNS colour key, or the pixel flips between transparent and opaque. */
+    private static void wetTransparency(RasterImage image, float[] costs) {
+        int[] key = transparencyKey(image);
+        if (key == null) {
+            return;
+        }
+        int spp = image.spp();
+        int n = image.width * image.height;
+        for (int i = 0; i < n; i++) {
+            if (nearKey(image.samples, i * spp, key)) {
+                costs[i] = Float.POSITIVE_INFINITY;
+            }
+        }
+    }
+
+    private static int[] transparencyKey(RasterImage image) {
+        byte[] data = null;
+        for (RasterImage.Chunk chunk : image.ancillary) {
+            if ("tRNS".equals(chunk.type())) {
+                data = chunk.data();
+            }
+        }
+        if (data == null) {
+            return null;
+        }
+        if (image.colorType == 0 && data.length >= 2) {
+            return new int[] {trnsSample(data, 0)};
+        }
+        if (image.colorType == 2 && data.length >= 6) {
+            return new int[] {trnsSample(data, 0), trnsSample(data, 2), trnsSample(data, 4)};
+        }
+        return null;
+    }
+
+    private static int trnsSample(byte[] data, int at) {
+        int raw = ((data[at] & 0xff) << 8) | (data[at + 1] & 0xff);
+        return raw > 255 ? (raw >> 8) : raw;
+    }
+
+    private static boolean nearKey(byte[] samples, int at, int[] key) {
+        if (key.length == 1) {
+            return Math.abs((samples[at] & 0xff) - key[0]) <= 1;
+        }
+        int red = samples[at] & 0xff;
+        int green = samples[at + 1] & 0xff;
+        int blue = samples[at + 2] & 0xff;
+        return Math.abs(red - key[0]) <= 1 && Math.abs(green - key[1]) <= 1 && Math.abs(blue - key[2]) <= 1;
     }
 
     private static RasterImage copy(RasterImage image) {
