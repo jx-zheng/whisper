@@ -1,5 +1,6 @@
 package com.jxzheng.whisper.ops;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
@@ -87,6 +88,10 @@ public final class PayloadOps {
             throw new IllegalArgumentException(
                     "Zhang–Tang is decrypt-only. New embeds use hill-stc or uerd-stc.");
         }
+        if ("hill-stc".equals(scheme) && "jpeg".equals(format)) {
+            throw new IllegalArgumentException(
+                    "HILL needs a PNG or BMP cover. JPEG covers use the JPEG scheme (uerd-stc).");
+        }
         PayloadFrame.Built frame = PayloadFrame.build(
                 request.kind(), request.name(), request.mime(), request.content(), request.reencoded());
         Envelope.SealRequest seal = new Envelope.SealRequest();
@@ -99,7 +104,14 @@ public final class PayloadOps {
         seal.contentAlreadyDense = Compression.looksCompressed(request.content());
         Envelope.Sealed sealed = Envelope.seal(seal, frame.bytes());
         try {
-            byte[] stego = embed(scheme, cover, format, sealed.bytes(), sealed.visitSeed(), request);
+            byte[] stego;
+            try {
+                stego = embed(scheme, cover, format, sealed.bytes(), sealed.visitSeed(), request);
+            } catch (MessageTooLongException tooBig) {
+                throw new MessageTooLongException(withAccurateContent(
+                        tooBig.getMessage(),
+                        shownCapacity(cover, scheme, request.preset(), frame.name(), frame.mime())));
+            }
             Outcome revealed = revealBytes(stego, request.stegoPass(), request.encPass(), request.split(), request.profile(), scheme);
             if (!revealed.ok() || !Arrays.equals(revealed.content(), request.content())) {
                 return fail(2, revealed.ok() ? VerifyMessages.HASH : revealed.message());
@@ -118,6 +130,9 @@ public final class PayloadOps {
             Path input, char[] stego, char[] enc, boolean split, KdfProfile profile, String schemeId,
             boolean legacyEmpty, String highProfileNote) throws Exception {
         byte[] file = Files.readAllBytes(input);
+        if (!imageContainer(file)) {
+            throw new IOException("Could not read image: " + input);
+        }
         String format = sniff(file);
         boolean auto = schemeId == null || schemeId.isBlank() || "auto".equalsIgnoreCase(schemeId);
         String scheme = auto ? "auto" : SchemeRegistry.canonical(schemeId, format);
@@ -364,6 +379,20 @@ public final class PayloadOps {
     }
 
     /**
+     * Replaces the scheme's content guess. That guess subtracts only the 58-byte
+     * envelope header and tag. The frame adds another 46 bytes plus the stored
+     * name and MIME (114 bytes for text, more for a file), and compression can
+     * only shrink the envelope, so this room is never larger than what fits.
+     */
+    static String withAccurateContent(String message, int contentRoom) {
+        if (message == null || contentRoom < 0 || !message.contains("bytes of content")) {
+            return message;
+        }
+        return message.replaceAll(
+                "about -?\\d+ bytes of content", "about " + contentRoom + " bytes of content");
+    }
+
+    /**
      * Bytes of content the cover can hold after the payload frame header.
      * Negative means the cover could not be measured.
      */
@@ -456,6 +485,20 @@ public final class PayloadOps {
         int bits = (file[28] & 0xff) | ((file[29] & 0xff) << 8);
         int compression = le32(file, 30);
         return planes == 1 && compression == 0 && (bits == 24 || bits == 32);
+    }
+
+    /** PNG, BMP, or JPEG container. Other bytes are not a stego image. */
+    static boolean imageContainer(byte[] file) {
+        if (file == null || file.length < 2) {
+            return false;
+        }
+        if (pngSignature(file)) {
+            return true;
+        }
+        if (file[0] == 'B' && file[1] == 'M') {
+            return true;
+        }
+        return file.length >= 3 && (file[0] & 0xff) == 0xff && (file[1] & 0xff) == 0xd8;
     }
 
     private static boolean pngSignature(byte[] file) {

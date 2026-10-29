@@ -72,7 +72,7 @@ final class AnalyzePane extends BorderPane {
                 chiMetrics,
                 chiDetail,
                 Forms.hint("Westfeld–Pfitzmann: a high p-value means adjacent even/odd bins look equalized, "
-                        + "which is what classic LSB replacement does. Zhang–Tang usually moves this less. "
+                        + "which is what classic LSB replacement does. Zhang–Tang is extract-only and is not used for new embeds. "
                         + "Compare a cover with its stego — this is not a calibrated detector.")));
         VBox rsCard = card("RS analysis", new VBox(8,
                 rsMetrics,

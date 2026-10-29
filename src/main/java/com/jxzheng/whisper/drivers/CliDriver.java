@@ -5,8 +5,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 import org.apache.commons.cli.CommandLine;
@@ -82,6 +85,13 @@ public class CliDriver {
             System.err.println("Invalid arguments: " + e.getMessage());
             printHelp();
             return 1;
+        } catch (NoSuchFileException e) {
+            String missing = e.getFile();
+            if (missing == null || missing.isBlank()) {
+                missing = e.getMessage();
+            }
+            System.err.println("Error: File not found: " + missing);
+            return 1;
         } catch (OutOfMemoryError e) {
             if (kdfHigh(commandArgs)) {
                 if ("extract".equals(command)) {
@@ -146,8 +156,8 @@ public class CliDriver {
                 AnalysisFormat.fixed(rs.regularMinusM()), AnalysisFormat.fixed(rs.singularMinusM()),
                 AnalysisFormat.fixed(rs.maskAsymmetry()));
         System.out.println("""
-                Heuristics only — calibrate on your cover set. Compare cover vs stego;
-                Zhang–Tang typically moves these less than naive LSB at the same payload.""");
+                Heuristics only — calibrate on your cover set. Compare a cover with its stego.
+                These checks look for classic LSB replacement. Zhang–Tang is extract-only and is not used for new embeds.""");
         return 0;
     }
 
@@ -194,6 +204,7 @@ public class CliDriver {
                 Omit -E / --encrypt-key to derive that key from the stego passphrase (-k).
                 Pass -E for a separate encryption passphrase. A blank passphrase is not confidential.
                 Legacy AES-128 (-c aes) cannot be used to embed. Extract still reads 0.9 images.
+                Zhang–Tang is extract-only. New embeds use hill-stc or uerd-stc.
                 Pass --encrypt-key for those encrypted legacy files.
 
                 Examples:
@@ -247,7 +258,8 @@ public class CliDriver {
         options.addOption(Option.builder().longOpt("kdf").hasArg().argName("name")
                 .desc("Argon2id profile: default or high").build());
         options.addOption(Option.builder().longOpt("keep-metadata")
-                .desc("Keep safe metadata chunks").build());
+                .desc("Also copy text, EXIF, and timestamp metadata, which can include location or camera data. "
+                        + "Colour profile and resolution are kept either way.").build());
         options.addOption(Option.builder().longOpt("out-dir").hasArg().argName("dir")
                 .desc("Directory for an extracted file or image").build());
         return options;
@@ -256,6 +268,8 @@ public class CliDriver {
     private int runModernEmbed(CommandLine cl) throws Exception {
         Path input = requiredPath(cl, "input-file");
         Path output = requiredPath(cl, "output-file");
+        rejectConflictingPayloads(cl);
+        validateFit(cl);
         String scheme = cl.getOptionValue("scheme", "auto");
         Envelope.SuiteKind suite = suite(cl, true);
         String resolved = SchemeRegistry.canonical(scheme, sniffFormat(input));
@@ -288,8 +302,12 @@ public class CliDriver {
             name = image.getFileName().toString();
             mime = MimeSniffer.mime(content);
             if (cl.hasOption("fit-quality") || cl.hasOption("fit-max-edge")) {
-                int quality = Integer.parseInt(cl.getOptionValue("fit-quality", "75"));
-                int edge = Integer.parseInt(cl.getOptionValue("fit-max-edge", "0"));
+                int quality = cl.hasOption("fit-quality")
+                        ? wholeNumber(cl.getOptionValue("fit-quality"), "--fit-quality")
+                        : 75;
+                int edge = cl.hasOption("fit-max-edge")
+                        ? wholeNumber(cl.getOptionValue("fit-max-edge"), "--fit-max-edge")
+                        : 0;
                 int room = PayloadOps.fitRoom(
                         Files.readAllBytes(input), scheme,
                         RatePreset.fromId(cl.getOptionValue("preset", "standard")), name);
@@ -350,30 +368,95 @@ public class CliDriver {
         PayloadOps.Outcome outcome = new PayloadOps().reveal(
                 input, stego, enc, split, kdf(cl), cl.getOptionValue("scheme", "auto"), legacyEmpty,
                 " If the sender used --kdf high, rerun with --kdf high.");
-        System.err.println(outcome.message());
         if (!outcome.ok()) {
+            System.err.println(outcome.message());
             return outcome.exitCode();
         }
         if (cl.hasOption("output-file")) {
             Files.write(Path.of(cl.getOptionValue("output-file")), outcome.content());
         } else if (cl.hasOption("out-dir")) {
-            String name = outcome.name() == null || outcome.name().isBlank()
-                    ? NameSanitizer.sanitize("", MimeSniffer.mime(outcome.content()))
-                    : outcome.name();
-            Path dest = Path.of(cl.getOptionValue("out-dir")).resolve(name);
-            try {
-                Files.write(dest, outcome.content(), StandardOpenOption.CREATE_NEW);
-            } catch (FileAlreadyExistsException e) {
-                throw new IllegalArgumentException("Refusing to overwrite " + dest
-                        + ". Pick another --out-dir or pass -o.");
-            }
+            writeExtracted(outcome, Path.of(cl.getOptionValue("out-dir")));
         } else if (outcome.kind() == PayloadKind.TEXT || outcome.legacy()) {
+            System.err.println(outcome.message());
             System.out.write(outcome.content());
             System.out.println();
+            return 0;
         } else {
             throw new IllegalArgumentException("Pass --out-dir or -o to save this " + outcome.kind() + " payload");
         }
+        System.err.println(outcome.message());
         return 0;
+    }
+
+    /**
+     * Creates a missing extract directory. A path that exists and is not a directory
+     * fails the same way an embed output's missing parent does.
+     */
+    private static void writeExtracted(PayloadOps.Outcome outcome, Path dir) throws IOException {
+        if (Files.exists(dir) && !Files.isDirectory(dir)) {
+            throw new IllegalArgumentException("Output directory does not exist: " + dir);
+        }
+        if (!Files.isDirectory(dir)) {
+            try {
+                Files.createDirectories(dir);
+            } catch (IOException e) {
+                throw new IllegalArgumentException("Output directory does not exist: " + dir);
+            }
+        }
+        String name = outcome.name() == null || outcome.name().isBlank()
+                ? NameSanitizer.sanitize("", MimeSniffer.mime(outcome.content()))
+                : outcome.name();
+        Path dest = dir.resolve(name);
+        try {
+            Files.write(dest, outcome.content(), StandardOpenOption.CREATE_NEW);
+        } catch (FileAlreadyExistsException e) {
+            throw new IllegalArgumentException("Refusing to overwrite " + dest
+                    + ". Pick another --out-dir or pass -o.");
+        }
+    }
+
+    private static void rejectConflictingPayloads(CommandLine cl) {
+        List<String> chosen = new ArrayList<>();
+        if (cl.hasOption("message")) {
+            chosen.add("--message");
+        }
+        if (cl.hasOption("message-file")) {
+            chosen.add("--message-file");
+        }
+        if (cl.hasOption("file")) {
+            chosen.add("--file");
+        }
+        if (cl.hasOption("image")) {
+            chosen.add("--image");
+        }
+        if (chosen.size() > 1) {
+            throw new IllegalArgumentException(
+                    "Pass only one of --message, --message-file, --file, or --image (got "
+                            + String.join(", ", chosen) + ")");
+        }
+    }
+
+    private static void validateFit(CommandLine cl) {
+        if (cl.hasOption("fit-quality")) {
+            wholeNumber(cl.getOptionValue("fit-quality"), "--fit-quality");
+        }
+        if (cl.hasOption("fit-max-edge")) {
+            int edge = wholeNumber(cl.getOptionValue("fit-max-edge"), "--fit-max-edge");
+            if (edge <= 0) {
+                throw new IllegalArgumentException("--fit-max-edge must be a positive number of pixels");
+            }
+        }
+    }
+
+    private static int wholeNumber(String raw, String flag) {
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalArgumentException(flag + " must be a whole number");
+        }
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(flag + " must be a whole number, not \"" + raw + "\"");
+        }
     }
 
     private static boolean isLegacyAes(CommandLine cl) {
