@@ -9,7 +9,6 @@ import com.jxzheng.whisper.carrier.CarrierCache;
 import com.jxzheng.whisper.crypto.CipherRegistry;
 import com.jxzheng.whisper.crypto.Envelope;
 import com.jxzheng.whisper.crypto.KdfProfile;
-import com.jxzheng.whisper.encryption.AesCipher;
 import com.jxzheng.whisper.media.ImageFormats;
 import com.jxzheng.whisper.payload.ImageFit;
 import com.jxzheng.whisper.payload.PayloadKind;
@@ -17,7 +16,6 @@ import com.jxzheng.whisper.schemes.RatePreset;
 import com.jxzheng.whisper.ops.AnalysisFormat;
 import com.jxzheng.whisper.ops.PayloadOps;
 import com.jxzheng.whisper.ops.StegoOperations;
-import com.jxzheng.whisper.ops.StegoOperations.EmbedResult;
 
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
@@ -54,8 +52,9 @@ final class EmbedPane extends BorderPane {
     private final CheckBox fitBox = new CheckBox("Fit to capacity");
     private final ComboBox<String> presetBox = Forms.choice(java.util.List.of("standard", "low", "paranoid"), "standard");
     private final Label fingerprint = new Label(" ");
-    private final PassphraseField stegoPassphrase = new PassphraseField("Optional — blank uses the public walk");
-    private final PassphraseField encryptPassphrase = new PassphraseField("Optional — blank uses the public cipher key");
+    private final Label keyWarning = new Label(" ");
+    private final PassphraseField stegoPassphrase = new PassphraseField("Optional — blank is not confidential");
+    private final PassphraseField encryptPassphrase = new PassphraseField("Optional — blank is not confidential");
     private final CheckBox encryptBox = new CheckBox("Separate encryption passphrase");
     private final ComboBox<String> schemeBox;
     private final ComboBox<String> cipherBox;
@@ -70,6 +69,9 @@ final class EmbedPane extends BorderPane {
     private final VBox form = new VBox(12);
 
     private int loadGeneration;
+    private int coverWidth;
+    private int coverHeight;
+    private int coverNzac = -1;
     private String loadedCover = "";
     private BufferedImage coverPreview;
     private BufferedImage stegoPreview;
@@ -85,8 +87,8 @@ final class EmbedPane extends BorderPane {
     private String usedStegoKey = "";
     private String usedEncryptKey = "";
     private boolean usedEncrypt;
-    private String usedScheme = StegoOperations.DEFAULT_SCHEME;
-    private String usedCipher = StegoOperations.DEFAULT_CIPHER;
+    private String usedScheme = "auto";
+    private String usedCipher = CipherRegistry.CHACHA;
 
     EmbedPane(StegoOperations operations, StatusBar status, Handoff handoff) {
         this.operations = operations;
@@ -110,7 +112,7 @@ final class EmbedPane extends BorderPane {
         messageFileField.setPromptText("Drop any file, or type a path");
         outputField.setPromptText("stego.png");
         embedButton.getStyleClass().add("primary");
-        cipherBox.setDisable(true);
+        cipherBox.setMaxWidth(Double.MAX_VALUE);
         openExtractButton.setVisible(false);
         openExtractButton.setManaged(false);
 
@@ -163,16 +165,14 @@ final class EmbedPane extends BorderPane {
         encryptKeyField.managedProperty().bind(encryptBox.selectedProperty());
         encryptKeyField.visibleProperty().bind(encryptBox.selectedProperty());
         Label encryptHint = Forms.hint(
-                "AES-GCM for the payload only (+" + AesCipher.OVERHEAD_BYTES
-                        + " bytes). Separate from the stego passphrase — it is never copied from that field. "
-                        + "Blank is the public empty-string cipher key and is not confidential. "
-                        + "The stego file stays a normal PNG or BMP.");
+                "Separate encryption passphrase for the payload. Blank is not confidential. "
+                        + "The picture itself is not encrypted.");
         encryptHint.managedProperty().bind(encryptBox.selectedProperty());
         encryptHint.visibleProperty().bind(encryptBox.selectedProperty());
         VBox optionsCard = card("Keys and output", new VBox(10,
                 Forms.field("Stego passphrase", stegoPassphrase),
-                Forms.hint("Pixel-walk key. Blank uses the public empty-string walk (PBKDF2 of \"\"). "
-                        + "That walk is not a secret."),
+                Forms.hint("Stego passphrase. It also encrypts the payload unless you set a separate one. "
+                        + "Blank is not confidential."),
                 encryptBox,
                 encryptKeyField,
                 encryptHint,
@@ -188,7 +188,12 @@ final class EmbedPane extends BorderPane {
         fingerprint.getStyleClass().add("hint");
         fingerprint.setWrapText(true);
         fingerprint.setMaxWidth(Double.MAX_VALUE);
-        form.getChildren().addAll(messageCard, optionsCard, actions, fingerprint);
+        keyWarning.getStyleClass().add("badge-warn");
+        keyWarning.setWrapText(true);
+        keyWarning.setMaxWidth(Double.MAX_VALUE);
+        keyWarning.setVisible(false);
+        keyWarning.setManaged(false);
+        form.getChildren().addAll(messageCard, optionsCard, keyWarning, actions, fingerprint);
         VBox.setVgrow(messageCard, Priority.ALWAYS);
         form.setMinWidth(0);
 
@@ -219,9 +224,17 @@ final class EmbedPane extends BorderPane {
         messageArea.textProperty().addListener((obs, previous, next) -> refreshSize());
         messageFileField.textProperty().addListener((obs, previous, next) -> refreshSize());
         encryptBox.selectedProperty().addListener((obs, previous, on) -> {
-            cipherBox.setDisable(!on);
             refreshSize();
+            refreshKeyWarning();
         });
+        cipherBox.valueProperty().addListener((obs, previous, value) -> refreshKeyWarning());
+        schemeBox.valueProperty().addListener((obs, previous, value) -> {
+            recomputeCapacity();
+            suggestOutput(pathFrom(coverField.getText()));
+        });
+        presetBox.valueProperty().addListener((obs, previous, value) -> recomputeCapacity());
+        stegoPassphrase.textProperty().addListener((obs, previous, value) -> refreshKeyWarning());
+        encryptPassphrase.textProperty().addListener((obs, previous, value) -> refreshKeyWarning());
         views.selectedToggleProperty().addListener((obs, previous, next) -> showPreview());
         embedButton.setOnAction(event -> embed());
         openExtractButton.setOnAction(event -> openExtract());
@@ -233,6 +246,7 @@ final class EmbedPane extends BorderPane {
         setMinWidth(0);
         PaneLayout.apply(this, imageColumn, imageCard, form, false, 1080);
         refreshSize();
+        refreshKeyWarning();
     }
 
     private void arrange(double width) {
@@ -286,6 +300,9 @@ final class EmbedPane extends BorderPane {
         if (path == null) {
             loadedCover = "";
             capacity = Integer.MIN_VALUE;
+            coverWidth = 0;
+            coverHeight = 0;
+            coverNzac = -1;
             coverPreview = null;
             stegoPreview = null;
             updateViewToggle();
@@ -298,12 +315,25 @@ final class EmbedPane extends BorderPane {
         }
         Background.start("whisper-cover", () -> {
             BufferedImage image = covers.load(path);
+            int nzac = -1;
+            String ext = ImageFormats.extensionOf(path);
+            if (ext.equals("jpg") || ext.equals("jpeg")) {
+                try {
+                    nzac = com.jxzheng.whisper.carrier.JpegCoefficients.parse(java.nio.file.Files.readAllBytes(path)).nzac();
+                } catch (RuntimeException ignored) {
+                    nzac = -1;
+                }
+            }
+            String warning = ImageFormats.lossyInputWarning(path);
+            if (nzac >= 0) {
+                warning = null;
+            }
             return new CoverLoad(
                     FxImages.scale(image, FxImages.PREVIEW_EDGE),
                     image.getWidth(),
                     image.getHeight(),
-                    StegoOperations.maxPayloadBytes(image.getWidth(), image.getHeight()),
-                    ImageFormats.lossyInputWarning(path));
+                    nzac,
+                    warning);
         }, loaded -> {
             if (token != loadGeneration) {
                 return;
@@ -311,13 +341,17 @@ final class EmbedPane extends BorderPane {
             loadedCover = path.toString();
             coverPreview = loaded.preview();
             stegoPreview = null;
-            capacity = loaded.capacity();
+            coverWidth = loaded.width();
+            coverHeight = loaded.height();
+            coverNzac = loaded.nzac();
+            recomputeCapacity();
             viewCover.setSelected(true);
             updateViewToggle();
             showPreview();
             imageCard.setCaption(fileName(path));
-            imageCard.setDetail(dimensions(loaded.width(), loaded.height(), loaded.capacity()));
-            imageCard.setWarning(loaded.warning());
+            if (coverNzac < 0 && loaded.warning() != null) {
+                imageCard.setWarning(loaded.warning());
+            }
             suggestOutput(path);
             refreshSize();
             if (loaded.warning() != null) {
@@ -331,6 +365,9 @@ final class EmbedPane extends BorderPane {
             }
             loadedCover = "";
             capacity = Integer.MIN_VALUE;
+            coverWidth = 0;
+            coverHeight = 0;
+            coverNzac = -1;
             coverPreview = null;
             stegoPreview = null;
             updateViewToggle();
@@ -397,28 +434,12 @@ final class EmbedPane extends BorderPane {
 
         openExtractButton.setVisible(false);
         openExtractButton.setManaged(false);
+        int shownCapacity = capacity;
         status.run("Embedding…", new Task<EmbedDone>() {
             @Override
             protected EmbedDone call() throws Exception {
-                if (modernEmbed(scheme, cipher, encrypt)) {
-                    return embedModern(cover, output, stegoKey, encryptKey, scheme, cipher, fromFile, messageText, messageFile);
-                }
-                BufferedImage image = covers.load(cover);
-                byte[] message = fromFile
-                        ? StegoOperations.readMessageFile(messageFile)
-                        : messageText.getBytes(StandardCharsets.UTF_8);
-                String warning = ImageFormats.lossyInputWarning(cover);
-                EmbedResult result = operations.embed(image, message, stegoKey, encrypt, encryptKey, scheme, cipher);
-                StegoOperations.writeStego(result.image(), output);
-                return new EmbedDone(
-                        FxImages.scale(image, FxImages.PREVIEW_EDGE),
-                        FxImages.scale(result.image(), FxImages.PREVIEW_EDGE),
-                        image.getWidth(),
-                        image.getHeight(),
-                        StegoOperations.maxPayloadBytes(image.getWidth(), image.getHeight()),
-                        result.payloadBytes(),
-                        warning,
-                        null);
+                return embedModern(
+                        cover, output, stegoKey, encryptKey, scheme, cipher, fromFile, messageText, messageFile, shownCapacity);
             }
         }, done -> {
             loadGeneration++;
@@ -436,8 +457,8 @@ final class EmbedPane extends BorderPane {
             usedStegoKey = stegoKey;
             usedEncryptKey = encrypt ? encryptKey : "";
             usedEncrypt = encrypt;
-            usedScheme = scheme == null ? StegoOperations.DEFAULT_SCHEME : scheme;
-            usedCipher = cipher == null ? StegoOperations.DEFAULT_CIPHER : cipher;
+            usedScheme = scheme == null || scheme.isBlank() ? "auto" : scheme;
+            usedCipher = cipher == null || cipher.isBlank() ? CipherRegistry.CHACHA : cipher;
             openExtractButton.setManaged(true);
             openExtractButton.setVisible(true);
             fingerprint.setText(done.verified() == null ? "" : done.verified());
@@ -447,19 +468,9 @@ final class EmbedPane extends BorderPane {
         });
     }
 
-    private static boolean modernEmbed(String scheme, String cipher, boolean encrypt) {
-        if (scheme != null && (scheme.equals("auto") || scheme.startsWith("hill") || scheme.startsWith("uerd"))) {
-            return true;
-        }
-        if (!encrypt) {
-            return false;
-        }
-        return cipher != null && !cipher.equals("aes");
-    }
-
     private EmbedDone embedModern(
             Path cover, Path output, String stegoKey, String encryptKey, String scheme, String cipher,
-            boolean fromFile, String messageText, Path messageFile) throws Exception {
+            boolean fromFile, String messageText, Path messageFile, int shownCapacity) throws Exception {
         byte[] content;
         PayloadKind kind;
         String name = "";
@@ -512,7 +523,7 @@ final class EmbedPane extends BorderPane {
                 FxImages.scale(image, FxImages.PREVIEW_EDGE),
                 FxImages.scale(stego, FxImages.PREVIEW_EDGE),
                 image.getWidth(), image.getHeight(),
-                StegoOperations.maxPayloadBytes(image.getWidth(), image.getHeight()),
+                shownCapacity,
                 content.length, null, outcome.message());
     }
 
@@ -531,10 +542,11 @@ final class EmbedPane extends BorderPane {
             sizeLabel.setText("No message file");
             return;
         }
-        boolean encrypt = encryptBox.isSelected();
-        int packaged = StegoOperations.packagedLength(bytes, encrypt);
-        String text = encrypt ? bytes + " B · " + packaged + " B embedded" : bytes + " B";
-        if (capacity != Integer.MIN_VALUE && (capacity < 0 || packaged > capacity)) {
+        String text = bytes + " B";
+        if (capacity != Integer.MIN_VALUE && capacity >= 0) {
+            text += " of about " + capacity + " B";
+        }
+        if (capacity != Integer.MIN_VALUE && (capacity < 0 || bytes > capacity)) {
             text += " · too large";
             sizeLabel.getStyleClass().add("warn");
         }
@@ -614,14 +626,65 @@ final class EmbedPane extends BorderPane {
         }
     }
 
-    private static String suggestionName(Path cover) {
+    private String suggestionName(Path cover) {
+        String ext = jpegOutput(cover) ? "jpg" : "png";
         if (cover == null || cover.getFileName() == null) {
-            return "stego.png";
+            return "stego." + ext;
         }
         String name = cover.getFileName().toString();
         int dot = name.lastIndexOf('.');
         String base = dot > 0 ? name.substring(0, dot) : name;
-        return base + "-stego.png";
+        return base + "-stego." + ext;
+    }
+
+    private boolean jpegOutput(Path cover) {
+        String scheme = schemeBox.getValue() == null ? "auto" : schemeBox.getValue();
+        if (scheme.startsWith("uerd") || "jpeg".equals(scheme)) {
+            return true;
+        }
+        if (!"auto".equals(scheme) || cover == null) {
+            return false;
+        }
+        String ext = ImageFormats.extensionOf(cover);
+        return ext.equals("jpg") || ext.equals("jpeg");
+    }
+
+    private void recomputeCapacity() {
+        if (coverWidth <= 0 || coverHeight <= 0) {
+            capacity = Integer.MIN_VALUE;
+            refreshSize();
+            return;
+        }
+        String scheme = schemeBox.getValue() == null ? "auto" : schemeBox.getValue();
+        double rate = RatePreset.fromId(presetBox.getValue()).rate();
+        if (coverNzac >= 0 && (scheme.startsWith("uerd") || "auto".equals(scheme) || "jpeg".equals(scheme))) {
+            capacity = com.jxzheng.whisper.schemes.framing.ParityFraming.userBudget(coverNzac, coverNzac, rate);
+        } else if ("zhang-tang".equals(scheme) || "zt".equals(scheme)) {
+            capacity = StegoOperations.maxPayloadBytes(coverWidth, coverHeight);
+        } else {
+            int pixels = coverWidth * coverHeight;
+            capacity = com.jxzheng.whisper.schemes.framing.ParityFraming.userBudget(
+                    pixels, pixels, Math.min(rate, com.jxzheng.whisper.schemes.adaptive.HillStcScheme.HARD_RATE));
+        }
+        if (coverPreview != null) {
+            imageCard.setDetail(dimensions(coverWidth, coverHeight, capacity));
+        }
+        String warning = null;
+        if (coverNzac >= 0 && scheme.startsWith("hill")) {
+            warning = "HILL needs a PNG or BMP cover. JPEG covers use the JPEG scheme.";
+        }
+        imageCard.setWarning(warning);
+        refreshSize();
+    }
+
+    private void refreshKeyWarning() {
+        boolean separate = encryptBox.isSelected();
+        boolean stegoBlank = stegoPassphrase.getText() == null || stegoPassphrase.getText().isEmpty();
+        boolean encBlank = encryptPassphrase.getText() == null || encryptPassphrase.getText().isEmpty();
+        boolean blank = "none".equals(cipherBox.getValue()) ? false : separate ? encBlank : stegoBlank;
+        keyWarning.setVisible(blank);
+        keyWarning.setManaged(blank);
+        keyWarning.setText(blank ? "Not confidential — the encryption passphrase is blank." : "");
     }
 
     private static String fileName(Path path) {
@@ -640,7 +703,7 @@ final class EmbedPane extends BorderPane {
         void openExtract(Path stego, String stegoKey, String encryptKey, boolean decrypt, String scheme, String cipher);
     }
 
-    private record CoverLoad(BufferedImage preview, int width, int height, int capacity, String warning) {
+    private record CoverLoad(BufferedImage preview, int width, int height, int nzac, String warning) {
     }
 
     private record EmbedDone(

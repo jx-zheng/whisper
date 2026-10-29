@@ -26,7 +26,6 @@ import com.jxzheng.whisper.media.ImageFormats;
 import com.jxzheng.whisper.ops.AnalysisFormat;
 import com.jxzheng.whisper.ops.PayloadOps;
 import com.jxzheng.whisper.ops.StegoOperations;
-import com.jxzheng.whisper.ops.StegoOperations.EmbedResult;
 import com.jxzheng.whisper.ops.StegoOperations.Report;
 import com.jxzheng.whisper.payload.ImageFit;
 import com.jxzheng.whisper.payload.MimeSniffer;
@@ -83,6 +82,10 @@ public class CliDriver {
             System.err.println("Invalid arguments: " + e.getMessage());
             printHelp();
             return 1;
+        } catch (OutOfMemoryError e) {
+            System.err.println(
+                    "Out of memory. If you passed --kdf high, that profile needs about 2 GiB of RAM. Use --kdf default.");
+            return 1;
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
             return 1;
@@ -96,34 +99,7 @@ public class CliDriver {
             return 0;
         }
 
-        if (modern(cl)) {
-            return runModernEmbed(cl);
-        }
-        Path inputPath = requiredPath(cl, "input-file");
-        Path outputPath = requiredPath(cl, "output-file");
-        String stegoKey = stegoKey(cl);
-        byte[] message = resolveMessageBytes(cl);
-        boolean encrypt = cl.hasOption("encrypt");
-        String encryptKey = encryptKey(cl, encrypt);
-
-        ImageFormats.requireLosslessOutput(outputPath);
-        String coverWarning = ImageFormats.lossyInputWarning(inputPath);
-        if (coverWarning != null) {
-            System.err.println(coverWarning);
-        }
-
-        BufferedImage cover = StegoOperations.readImage(inputPath);
-        EmbedResult result = operations.embed(
-                cover,
-                message,
-                stegoKey,
-                encrypt,
-                encryptKey,
-                cl.getOptionValue("scheme", StegoOperations.DEFAULT_SCHEME),
-                cl.getOptionValue("cipher", StegoOperations.DEFAULT_CIPHER));
-        StegoOperations.writeStego(result.image(), outputPath);
-        System.out.println("Embedded " + result.payloadBytes() + " byte(s) into " + outputPath);
-        return 0;
+        return runModernEmbed(cl);
     }
 
     private int runExtract(String[] args) throws ParseException, Exception {
@@ -133,32 +109,7 @@ public class CliDriver {
             return 0;
         }
 
-        if (modern(cl)) {
-            return runModernExtract(cl);
-        }
-        Path inputPath = requiredPath(cl, "input-file");
-        String stegoKey = stegoKey(cl);
-        boolean decrypt = cl.hasOption("encrypt");
-        String encryptKey = encryptKey(cl, decrypt);
-
-        BufferedImage stego = StegoOperations.readImage(inputPath);
-        byte[] payload = operations.extract(
-                stego,
-                stegoKey,
-                decrypt,
-                encryptKey,
-                cl.getOptionValue("scheme", StegoOperations.DEFAULT_SCHEME),
-                cl.getOptionValue("cipher", StegoOperations.DEFAULT_CIPHER));
-
-        if (cl.hasOption("output-file")) {
-            Path outputPath = Path.of(cl.getOptionValue("output-file"));
-            Files.write(outputPath, payload);
-            System.out.println("Wrote extracted message (" + payload.length + " byte(s)) to " + outputPath);
-        } else {
-            System.out.write(payload);
-            System.out.println();
-        }
-        return 0;
+        return runModernExtract(cl);
     }
 
     private int runAnalyze(String[] args) throws ParseException, IOException {
@@ -191,19 +142,6 @@ public class CliDriver {
         return 0;
     }
 
-    private static byte[] resolveMessageBytes(CommandLine cl) throws IOException {
-        if (cl.hasOption("message") && cl.hasOption("message-file")) {
-            throw new IllegalArgumentException("Use either --message or --message-file, not both");
-        }
-        if (cl.hasOption("message")) {
-            return cl.getOptionValue("message").getBytes(StandardCharsets.UTF_8);
-        }
-        if (cl.hasOption("message-file")) {
-            return StegoOperations.readMessageFile(Path.of(cl.getOptionValue("message-file")));
-        }
-        throw new IllegalArgumentException("Missing required option: --message or --message-file");
-    }
-
     private static Path requiredPath(CommandLine cl, String option) {
         return Path.of(requiredOption(cl, option));
     }
@@ -217,34 +155,14 @@ public class CliDriver {
     }
 
     /**
-     * Spaces are a real stego key. A missing or empty {@code -k} selects the public
-     * default walk (PBKDF2 of the empty string).
+     * Spaces are a real stego key. A missing or empty {@code -k} is the public walk.
+     * Omit {@code -E} and this passphrase is also the AEAD key.
      */
     private static String stegoKey(CommandLine cl) {
         if (!cl.hasOption("key")) {
             return "";
         }
         String value = cl.getOptionValue("key");
-        return value == null ? "" : value;
-    }
-
-    /**
-     * Never falls back to {@code -k}. A missing or empty {@code -E} is the public
-     * empty-string AES-GCM key. Omitting the flag prints a warning because that
-     * key authenticates the payload and does not keep it confidential.
-     */
-    private static String encryptKey(CommandLine cl, boolean encrypt) {
-        if (!encrypt) {
-            return null;
-        }
-        if (!cl.hasOption("encrypt-key")) {
-            System.err.println(
-                    "Warning: --encrypt-key was omitted. Using the public empty-string AES-GCM key. "
-                            + "The payload is authenticated but not confidential. "
-                            + "The stego key (-k) is not used as the encryption passphrase.");
-            return "";
-        }
-        String value = cl.getOptionValue("encrypt-key");
         return value == null ? "" : value;
     }
 
@@ -259,23 +177,21 @@ public class CliDriver {
                   extract   Recover a message from a stego image
                   analyze   Run chi-square and RS steganalysis on an image
 
-                Stego output must be PNG or BMP (allow-listed RGB containers).
-                JPEG/WebP/GIF and other formats are rejected because they destroy LSBs.
+                Stego output is PNG or BMP for HILL, and JPEG for the JPEG scheme.
                 """,
                 options,
                 """
-                The stego key (-k) and the encryption passphrase (-E) are independent.
-                Omit -k, or pass an empty value, for the public empty-string pixel walk.
-                -e encrypts only the hidden message and does not reuse -k.
-                Omit -E, or pass an empty value, for the public empty-string AES-GCM key.
-                That key authenticates the payload and is not confidential. Omitting -E prints a warning.
-                The stego file stays a normal PNG or BMP.
+                New embeds use ChaCha20-Poly1305 unless --cipher says otherwise.
+                Omit -E / --encrypt-key to derive that key from the stego passphrase (-k).
+                Pass -E for a separate encryption passphrase. A blank passphrase is not confidential.
+                Legacy AES-128 (-c aes) cannot be used to embed. Extract still reads 0.9 images.
+                Pass --encrypt-key for those encrypted legacy files.
 
                 Examples:
-                  whisper embed -i cover.png -o stego.png -m "hello"
-                  whisper embed -i cover.png -o stego.png -m "hello" -k walk-secret -e -E cipher-secret
-                  whisper extract -i stego.png
-                  whisper extract -i stego.png -k walk-secret -e -E cipher-secret
+                  whisper embed -i cover.png -o stego.png -m "hello" -k "a real passphrase"
+                  whisper embed -i cover.png -o stego.png -m "hello" -k walk-secret -E cipher-secret
+                  whisper extract -i stego.png -k "a real passphrase"
+                  whisper extract -i old.png -k walk-secret --encrypt-key cipher-secret
                   whisper analyze -i stego.png
                 """,
                 true);
@@ -293,20 +209,18 @@ public class CliDriver {
         options.addOption(Option.builder("f").longOpt("message-file").hasArg().argName("file")
                 .desc("Read message to embed from a file (embed only)").build());
         options.addOption(Option.builder("s").longOpt("scheme").hasArg().argName("name")
-                .desc("Steganography scheme (default: zhang-tang)").build());
+                .desc("Steganography scheme (default: auto)").build());
         options.addOption(Option.builder("c").longOpt("cipher").hasArg().argName("name")
-                .desc("Cipher to use with -e (default: aes)").build());
+                .desc("Cipher for new embeds (default: chacha20-poly1305). aes is decrypt-only.").build());
         options.addOption(Option.builder("e").longOpt("encrypt")
-                .desc("Encrypt the message payload before embed / decrypt after extract. "
-                        + "Does not encrypt the image. Does not reuse -k. "
-                        + "Without --encrypt-key, uses the public empty-string AES-GCM key.").build());
+                .desc("Accepted for compatibility. New embeds are encrypted unless --cipher none. "
+                        + "Omit -E to use the stego passphrase as the AEAD key.").build());
         options.addOption(Option.builder("k").longOpt("key").hasArg().argName("key")
                 .desc("Stego / pixel-walk key. Optional. Omitted or empty uses the public "
                         + "empty-string walk.").build());
         options.addOption(Option.builder("E").longOpt("encrypt-key").hasArg().argName("key")
-                .desc("Encryption passphrase (PBKDF2 to AES-GCM) for the payload only. "
-                        + "Not copied from -k. Omitted or empty is the public empty-string cipher key. "
-                        + "Omitting it with -e prints a warning.").build());
+                .desc("Separate encryption passphrase. Omitted means the stego passphrase is also the AEAD key. "
+                        + "Required to decrypt legacy AES-128 payloads. The flag name is encrypt-key.").build());
         options.addOption(Option.builder("h").longOpt("help").desc("Show usage information").build());
         options.addOption(Option.builder().longOpt("text-file").hasArg().argName("file")
                 .desc("UTF-8 text file to hide").build());
@@ -394,6 +308,9 @@ public class CliDriver {
                 RatePreset.fromId(cl.getOptionValue("preset", "standard")),
                 kdf(cl), stego, enc, enc != null && suite != Envelope.SuiteKind.INTEGRITY,
                 cl.hasOption("keep-metadata"), reencoded);
+        if (blankKey(stego, enc, request.split(), suite)) {
+            System.err.println("Note: a blank passphrase is not confidential. The payload can be derived by anyone.");
+        }
         PayloadOps.Outcome outcome = new PayloadOps().hide(request);
         System.err.println(outcome.message());
         if (!outcome.ok()) {
@@ -420,7 +337,12 @@ public class CliDriver {
             String name = outcome.name() == null || outcome.name().isBlank()
                     ? NameSanitizer.sanitize("", MimeSniffer.mime(outcome.content()))
                     : outcome.name();
-            Files.write(Path.of(cl.getOptionValue("out-dir")).resolve(name), outcome.content());
+            Path dest = Path.of(cl.getOptionValue("out-dir")).resolve(name);
+            if (Files.exists(dest)) {
+                throw new IllegalArgumentException("Refusing to overwrite " + dest
+                        + ". Pick another --out-dir or pass -o.");
+            }
+            Files.write(dest, outcome.content());
         } else if (outcome.kind() == PayloadKind.TEXT || outcome.legacy()) {
             System.out.write(outcome.content());
             System.out.println();
@@ -496,39 +418,35 @@ public class CliDriver {
         return 0;
     }
 
-    private static boolean modern(CommandLine cl) {
-        if (cl.hasOption("file") || cl.hasOption("image") || cl.hasOption("text-file")
-                || cl.hasOption("preset") || cl.hasOption("kdf") || cl.hasOption("keep-metadata")) {
-            return true;
-        }
-        String scheme = cl.getOptionValue("scheme");
-        if (scheme != null) {
-            String name = scheme.toLowerCase(Locale.ROOT);
-            if (name.equals("hill-stc") || name.equals("uerd-stc") || name.equals("auto")
-                    || name.equals("hill") || name.equals("uerd")) {
-                return true;
-            }
-        }
-        String cipher = cl.getOptionValue("cipher");
-        if (cipher != null) {
-            String name = cipher.toLowerCase(Locale.ROOT);
-            return name.equals("chacha20-poly1305") || name.equals("aes-256-gcm") || name.equals("none");
-        }
-        return false;
-    }
-
     private static Envelope.SuiteKind suite(CommandLine cl) {
         String cipher = cl.getOptionValue("cipher", "chacha20-poly1305");
         return switch (cipher.toLowerCase(Locale.ROOT)) {
             case "aes-256-gcm", "aes256", "aes-gcm" -> Envelope.SuiteKind.AES;
             case "none", "integrity" -> Envelope.SuiteKind.INTEGRITY;
             case "chacha20-poly1305", "chacha" -> Envelope.SuiteKind.CHACHA;
+            case "aes", "aes-128-gcm" -> throw new IllegalArgumentException(
+                    "AES-128-GCM (-c aes) is decrypt-only. New embeds use chacha20-poly1305 or aes-256-gcm.");
             default -> throw new IllegalArgumentException("Unsupported cipher: " + cipher);
         };
     }
 
     private static KdfProfile kdf(CommandLine cl) {
-        return KdfProfile.fromId(cl.getOptionValue("kdf", "default"));
+        String id = cl.getOptionValue("kdf", "default");
+        if ("test".equalsIgnoreCase(id) && !Boolean.getBoolean("whisper.kdf.test")) {
+            throw new IllegalArgumentException(
+                    "--kdf test is not a production profile. It is available only when -Dwhisper.kdf.test=true is set.");
+        }
+        return KdfProfile.fromId(id);
+    }
+
+    private static boolean blankKey(char[] stego, char[] enc, boolean split, Envelope.SuiteKind suite) {
+        if (suite == Envelope.SuiteKind.INTEGRITY) {
+            return false;
+        }
+        if (split) {
+            return enc == null || enc.length == 0;
+        }
+        return stego == null || stego.length == 0;
     }
 
     private static boolean isJpeg(Path path) throws java.io.IOException {

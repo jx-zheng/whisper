@@ -7,6 +7,7 @@ import java.util.Arrays;
 
 import com.jxzheng.whisper.carrier.BmpCodec;
 import com.jxzheng.whisper.carrier.Carrier;
+import com.jxzheng.whisper.carrier.CoverConverter;
 import com.jxzheng.whisper.carrier.JpegCoefficients;
 import com.jxzheng.whisper.carrier.PngCodec;
 import com.jxzheng.whisper.carrier.RasterImage;
@@ -17,8 +18,10 @@ import com.jxzheng.whisper.crypto.Hkdf;
 import com.jxzheng.whisper.crypto.KdfProfile;
 import com.jxzheng.whisper.crypto.KeyCache;
 import com.jxzheng.whisper.crypto.KeySchedule;
+import com.jxzheng.whisper.crypto.LegacyAes128GcmPbkdf2;
 import com.jxzheng.whisper.crypto.Secrets;
 import com.jxzheng.whisper.exceptions.CorruptOrInvalidStegoImageException;
+import com.jxzheng.whisper.exceptions.EncryptionException;
 import com.jxzheng.whisper.exceptions.MessageTooLongException;
 import com.jxzheng.whisper.payload.ImageFit;
 import com.jxzheng.whisper.payload.MimeSniffer;
@@ -95,6 +98,7 @@ public final class PayloadOps {
             if (!revealed.ok() || !Arrays.equals(revealed.content(), request.content())) {
                 return fail(2, revealed.ok() ? VerifyMessages.HASH : revealed.message());
             }
+            revealed = confidentiality(revealed, request.stegoPass(), request.encPass(), request.split(), request.suite());
             AtomicFiles.write(request.output(), stego);
             return revealed;
         } finally {
@@ -111,21 +115,24 @@ public final class PayloadOps {
                 ? "auto"
                 : canonical(schemeId, format);
         try {
+            Outcome outcome;
             if ("auto".equals(scheme)) {
                 if ("jpeg".equals(format)) {
-                    return revealUerd(file, stego, enc, split, profile);
+                    outcome = revealUerd(file, stego, enc, split, profile);
+                } else {
+                    Outcome zhang = revealZhang(file, stego, enc, split, profile, true);
+                    outcome = zhang.ok() || zhang.exitCode() == 2
+                            ? zhang
+                            : revealHill(file, format, stego, enc, split, profile);
                 }
-                Outcome zhang = revealZhang(file, stego, enc, split, profile, true);
-                if (zhang.ok() || zhang.exitCode() == 2) {
-                    return zhang;
-                }
-                return revealHill(file, format, stego, enc, split, profile);
+            } else {
+                outcome = switch (scheme) {
+                    case "hill-stc" -> revealHill(file, format, stego, enc, split, profile);
+                    case "uerd-stc" -> revealUerd(file, stego, enc, split, profile);
+                    default -> revealZhang(file, stego, enc, split, profile, true);
+                };
             }
-            return switch (scheme) {
-                case "hill-stc" -> revealHill(file, format, stego, enc, split, profile);
-                case "uerd-stc" -> revealUerd(file, stego, enc, split, profile);
-                default -> revealZhang(file, stego, enc, split, profile, false);
-            };
+            return confidentiality(outcome, stego, enc, split, Envelope.SuiteKind.CHACHA);
         } finally {
             Secrets.wipe(stego);
             Secrets.wipe(enc);
@@ -139,7 +146,7 @@ public final class PayloadOps {
                 request.preset(), request.keepMetadata(), "bmp".equals(format) && "hill-stc".equals(scheme) ? "bmp" : "png");
         return switch (scheme) {
             case "hill-stc" -> {
-                RasterImage image = "bmp".equals(format) ? BmpCodec.read(cover) : PngCodec.decode(cover);
+                RasterImage image = "bmp".equals(format) ? BmpCodec.read(cover) : pngOrConvert(cover);
                 yield hill.embed(Carrier.raster(image, cover, format), envelope, visit, options, Progress.NONE).encoded();
             }
             case "uerd-stc" -> uerd.embed(Carrier.encoded(cover, "jpg"), envelope, visit,
@@ -235,10 +242,10 @@ public final class PayloadOps {
             byte[] blob = new ZhangTangScheme(image, new String(stego == null ? new char[0] : stego)).extractMessage();
             Outcome opened = openBlob(blob, null, null, stego, enc, split, profile, "zhang-tang", "Legacy (high capacity)");
             if (opened == null) {
-                return allowLegacy ? legacy(blob, "zhang-tang") : fail(3, VerifyMessages.NOTHING_FOUND);
+                return allowLegacy ? legacyPayload(blob, stego, enc) : fail(3, VerifyMessages.NOTHING_FOUND);
             }
             return opened;
-        } catch (CorruptOrInvalidStegoImageException | java.io.IOException e) {
+        } catch (CorruptOrInvalidStegoImageException | MessageTooLongException | java.io.IOException e) {
             return fail(3, VerifyMessages.NOTHING_FOUND);
         }
     }
@@ -279,9 +286,54 @@ public final class PayloadOps {
         }
     }
 
-    private static Outcome legacy(byte[] bytes, String scheme) {
-        return new Outcome(true, 0, VerifyMessages.LEGACY, bytes, sniffKind(bytes), "whisper-payload.bin", "",
-                scheme, "legacy", true, false);
+    /**
+     * Bytes that are not a v2 envelope. Encrypted 0.9 payloads are decrypted with
+     * the encryption passphrase. Ciphertext is never returned as a success.
+     */
+    private static Outcome legacyPayload(byte[] blob, char[] stego, char[] enc) {
+        if (enc != null) {
+            try {
+                byte[] plain = new LegacyAes128GcmPbkdf2().decrypt(blob, Secrets.copy(enc));
+                return new Outcome(true, 0, VerifyMessages.LEGACY_ENCRYPTED, plain, sniffKind(plain),
+                        safeName("", plain), "", "zhang-tang", "legacy-aes", true, false);
+            } catch (EncryptionException e) {
+                if (!MimeSniffer.printableText(blob)) {
+                    return fail(2, "Legacy AES-GCM decryption failed. Check the encryption passphrase. Ciphertext is not shown.");
+                }
+            }
+        } else if (blob.length > 44 && !MimeSniffer.printableText(blob)) {
+            return fail(2, "This looks like a legacy encrypted payload. Pass the encryption passphrase (-E). Ciphertext is not shown.");
+        }
+        if (!MimeSniffer.printableText(blob)) {
+            return fail(2, "Unverified legacy bytes are not text and did not decrypt. Nothing is shown.");
+        }
+        return new Outcome(true, 0, VerifyMessages.LEGACY, blob, sniffKind(blob), "whisper-payload.bin", "",
+                "zhang-tang", "legacy", true, false);
+    }
+
+    private static Outcome confidentiality(Outcome outcome, char[] stego, char[] enc, boolean split, Envelope.SuiteKind suite) {
+        if (outcome == null || !outcome.ok() || outcome.legacy() || suite == Envelope.SuiteKind.INTEGRITY) {
+            return outcome;
+        }
+        boolean secret = split ? enc != null && enc.length > 0 : stego != null && stego.length > 0;
+        if (secret || outcome.message() == null || !outcome.message().startsWith("Verified ·")) {
+            return outcome;
+        }
+        String message = "Verified, not confidential ·" + outcome.message().substring("Verified ·".length());
+        return new Outcome(true, 0, message, outcome.content(), outcome.kind(), outcome.name(), outcome.sha256(),
+                outcome.schemeId(), outcome.cipher(), false, outcome.reencoded());
+    }
+
+    private static RasterImage pngOrConvert(byte[] cover) throws Exception {
+        try {
+            return PngCodec.decode(cover);
+        } catch (IllegalArgumentException ex) {
+            String message = ex.getMessage() == null ? "" : ex.getMessage();
+            if (message.contains("paletted") || message.contains("interlaced") || message.contains("bit depth")) {
+                return PngCodec.decode(CoverConverter.toEightBitPng(cover));
+            }
+            throw ex;
+        }
     }
 
     private static PayloadKind sniffKind(byte[] bytes) {
@@ -296,12 +348,20 @@ public final class PayloadOps {
 
     private static Outcome fromAuth(AuthException e) {
         return switch (e.kind()) {
-            case AUTH -> fail(2, e.suiteBits() == 2 ? VerifyMessages.INTEGRITY_FAIL : VerifyMessages.WRONG_ENCRYPTION);
+            case AUTH -> fail(2, authMessage(e));
             case INCOMPLETE -> fail(2, VerifyMessages.INCOMPLETE);
             case DECOMPRESS -> fail(2, VerifyMessages.DECOMPRESS);
             case FORMAT -> fail(2, VerifyMessages.DAMAGED);
             case SALT -> fail(3, VerifyMessages.NOTHING_FOUND);
         };
+    }
+
+    private static String authMessage(AuthException error) {
+        String text = error.getMessage() == null ? "" : error.getMessage();
+        if (text.contains("kdf profile")) {
+            return "This payload used a different KDF profile. High needs about 2 GiB of RAM; retry with --kdf high.";
+        }
+        return error.suiteBits() == 2 ? VerifyMessages.INTEGRITY_FAIL : VerifyMessages.WRONG_ENCRYPTION;
     }
 
     private static Outcome fail(int code, String message) {

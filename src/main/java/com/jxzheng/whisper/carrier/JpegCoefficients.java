@@ -59,6 +59,10 @@ public final class JpegCoefficients {
             if (marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7)) {
                 throw new IllegalArgumentException("jpeg: unexpected standalone marker outside the scan");
             }
+            if (marker == 0xC2) {
+                throw new IllegalArgumentException(
+                        "jpeg: progressive JPEG is not supported; only baseline Huffman scans can be updated in place");
+            }
             if (unsupported(marker)) {
                 throw new IllegalArgumentException(
                         "jpeg: frame marker is not baseline DCT (progressive, arithmetic, and 12-bit JPEG are not supported)");
@@ -144,6 +148,16 @@ public final class JpegCoefficients {
     }
 
     public byte[] encode(boolean keepMeta) {
+        try {
+            return encodeTables(keepMeta);
+        } catch (JpegEntropy.MissingSymbol missing) {
+            // A ±1 change can need a (run, size) the cover's Huffman table never defined.
+            installCountedTables();
+            return encodeTables(keepMeta);
+        }
+    }
+
+    private byte[] encodeTables(boolean keepMeta) {
         byte[] entropy = encodeScan();
         int size = 2 + entropy.length + 2;
         for (Segment seg : prefix) {
@@ -370,6 +384,138 @@ public final class JpegCoefficients {
                 }
             }
         }
+    }
+
+    private void installCountedTables() {
+        java.util.Map<Integer, int[]> dcFreq = new java.util.HashMap<>();
+        java.util.Map<Integer, int[]> acFreq = new java.util.HashMap<>();
+        for (ScanComp sc : scan) {
+            dcFreq.putIfAbsent(sc.dc, new int[256]);
+            acFreq.putIfAbsent(sc.ac, new int[256]);
+        }
+        int[] hv = maxSample();
+        int mcusX = (width + 8 * hv[0] - 1) / (8 * hv[0]);
+        int mcusY = (height + 8 * hv[1] - 1) / (8 * hv[1]);
+        int[] prev = new int[comps.size()];
+        int mcu = 0;
+        for (int my = 0; my < mcusY; my++) {
+            for (int mx = 0; mx < mcusX; mx++) {
+                if (restartInterval > 0 && mcu > 0 && mcu % restartInterval == 0) {
+                    java.util.Arrays.fill(prev, 0);
+                }
+                for (ScanComp sc : scan) {
+                    Comp comp = comps.get(sc.index);
+                    int[] plane = planes.get(sc.index);
+                    int[] dcUse = dcFreq.get(sc.dc);
+                    int[] acUse = acFreq.get(sc.ac);
+                    for (int vy = 0; vy < comp.v; vy++) {
+                        for (int vx = 0; vx < comp.h; vx++) {
+                            int at = ((my * comp.v + vy) * comp.blocksX + (mx * comp.h + vx)) * 64;
+                            prev[sc.index] = noteBlock(plane, at, prev[sc.index], dcUse, acUse);
+                        }
+                    }
+                }
+                mcu++;
+            }
+        }
+        for (var entry : dcFreq.entrySet()) {
+            int[] freq = entry.getValue();
+            if (freq[0] == 0) {
+                freq[0] = 1;
+            }
+            dc[entry.getKey()] = JpegEntropy.fromFrequencies(freq);
+        }
+        for (var entry : acFreq.entrySet()) {
+            int[] freq = entry.getValue();
+            freq[0x00] = Math.max(freq[0x00], 1);
+            freq[0xF0] = Math.max(freq[0xF0], 1);
+            ac[entry.getKey()] = JpegEntropy.fromFrequencies(freq);
+        }
+        prefix.removeIf(seg -> seg.marker == 0xC4);
+        prefix.add(dhtSegment(dcFreq.keySet(), acFreq.keySet()));
+    }
+
+    private static int noteBlock(int[] block, int at, int prev, int[] dcFreq, int[] acFreq) {
+        int diff = block[at] - prev;
+        int category = JpegEntropy.amplitude(diff)[0];
+        dcFreq[category]++;
+        int run = 0;
+        for (int k = 1; k < 64; k++) {
+            int v = block[at + JpegEntropy.ZIGZAG[k]];
+            if (v == 0) {
+                run++;
+                continue;
+            }
+            while (run > 15) {
+                acFreq[0xF0]++;
+                run -= 16;
+            }
+            int size = JpegEntropy.amplitude(v)[0];
+            acFreq[(run << 4) | size]++;
+            run = 0;
+        }
+        if (run > 0) {
+            acFreq[0x00]++;
+        }
+        return block[at];
+    }
+
+    private Segment dhtSegment(java.util.Set<Integer> dcIds, java.util.Set<Integer> acIds) {
+        java.util.List<byte[]> tables = new java.util.ArrayList<>();
+        int bytes = 0;
+        for (int id : dcIds) {
+            byte[] table = huffBytes(0, id, dc[id]);
+            tables.add(table);
+            bytes += table.length;
+        }
+        for (int id : acIds) {
+            byte[] table = huffBytes(1, id, ac[id]);
+            tables.add(table);
+            bytes += table.length;
+        }
+        byte[] payload = new byte[bytes];
+        int at = 0;
+        for (byte[] table : tables) {
+            System.arraycopy(table, 0, payload, at, table.length);
+            at += table.length;
+        }
+        int len = payload.length + 2;
+        byte[] raw = new byte[4 + payload.length];
+        raw[0] = (byte) 0xff;
+        raw[1] = (byte) 0xc4;
+        raw[2] = (byte) (len >> 8);
+        raw[3] = (byte) len;
+        System.arraycopy(payload, 0, raw, 4, payload.length);
+        Segment seg = new Segment();
+        seg.marker = 0xC4;
+        seg.raw = raw;
+        seg.payload = payload;
+        return seg;
+    }
+
+    private static byte[] huffBytes(int clazz, int id, JpegEntropy.Huff huff) {
+        int[] counts = new int[16];
+        int symbols = 0;
+        for (int sym = 0; sym < 256; sym++) {
+            if (huff.ok[sym]) {
+                counts[huff.nbit[sym] - 1]++;
+                symbols++;
+            }
+        }
+        byte[] out = new byte[1 + 16 + symbols];
+        out[0] = (byte) ((clazz << 4) | id);
+        for (int i = 0; i < 16; i++) {
+            out[1 + i] = (byte) counts[i];
+        }
+        int at = 17;
+        for (int length = 1; length <= 16; length++) {
+            for (int sym = 0; sym < 256; sym++) {
+                if (huff.ok[sym] && huff.nbit[sym] == length) {
+                    out[at++] = (byte) sym;
+                }
+            }
+        }
+        return out;
     }
 
     private byte[] encodeScan() {

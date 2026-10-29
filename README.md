@@ -19,11 +19,13 @@ The shaded jar is the CLI. JavaFX stays on the module path and is not inside the
 
 ```bash
 java -jar target/whisper-1.0.0.jar embed \
-  -i cover.png -o stego.png -m "hello" --scheme hill-stc --cipher chacha20-poly1305 -k "a real passphrase"
+  -i cover.png -o stego.png -m "hello" -k "a real passphrase"
 
 java -jar target/whisper-1.0.0.jar extract \
   -i stego.png -k "a real passphrase"
 ```
+
+Those two commands are the defaults: `auto` picks HILL for a PNG and UERD for a JPEG, and the cipher is ChaCha20-Poly1305. Omit `-E` and the stego passphrase is also the encryption key. A blank passphrase still embeds, and the result is labelled not confidential.
 
 Extract prints `Verified · SHA-256 …` on standard error when the payload checks out.
 
@@ -51,7 +53,7 @@ java -jar target/whisper-1.0.0.jar inspect -i photo.jpg --json
 
 ## What you can hide
 
-- **Text.** UTF-8. `--message` / `-m`, or `--text-file`. `--message-file` is the same as `--text-file` when a modern scheme or cipher is selected, and remains the legacy text path for Zhang–Tang without one.
+- **Text.** UTF-8. `--message` / `-m`, or `--text-file`. `--message-file` is the same as `--text-file`.
 - **File.** Any bytes. `--file report.pdf`. The sanitized base name is stored so Extract can suggest it.
 - **Image.** `--image secret.png`. If it does not fit, `--fit-quality 75 --fit-max-edge 1024` re-encodes a smaller JPEG copy of the *hidden* image. The cover is not re-encoded.
 
@@ -64,13 +66,14 @@ On success the CLI and the app show the cipher and the full SHA-256 of the conte
 | What you see | Meaning |
 |---|---|
 | Verified · cipher · SHA-256 … | Tag and content hash match |
+| Verified, not confidential · … | Tag and content hash match, and the encryption passphrase was blank |
 | Verified, not encrypted · SHA-256 … | HMAC matched; anyone with the stego passphrase can read it |
 | Nothing found with this key | Wrong stego passphrase, no payload, or the image was edited |
 | Wrong encryption passphrase, or the payload was tampered with | The stego passphrase found a payload; the encryption passphrase or the bytes did not |
 | Payload damaged (incomplete / decompression failed) | The stream is truncated or will not inflate. Nothing is shown |
 | Integrity check failed: content hash does not match | The tag matched and the hash did not. The content is not shown |
 | Tampered or wrong key (not encrypted) | Integrity-only HMAC failed |
-| Unverified (legacy format) | A Whisper 0.9 image. Re-embed to get a content hash |
+| Unverified (legacy format) | A Whisper 0.9 image. Re-embed to get a content hash. Encrypted 0.9 images need `-E` and then read "AES-GCM tag OK; no content hash". Ciphertext is not shown |
 
 ## Security model
 

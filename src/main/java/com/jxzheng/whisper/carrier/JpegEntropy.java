@@ -50,9 +50,99 @@ final class JpegEntropy {
 
         void write(BitWriter out, int symbol) {
             if (!ok[symbol]) {
-                throw new IllegalArgumentException("jpeg: Huffman table has no symbol");
+                throw new MissingSymbol(symbol);
             }
             out.write(code[symbol], nbit[symbol]);
+        }
+    }
+
+    /** A (run, size) or DC category appeared that the cover's Huffman table does not contain. */
+    static final class MissingSymbol extends IllegalArgumentException {
+        MissingSymbol(int symbol) {
+            super("jpeg: Huffman table has no symbol 0x" + Integer.toHexString(symbol));
+        }
+    }
+
+    /**
+     * Canonical Huffman table for every symbol with a non-zero count.
+     * Used when a ±1 coefficient change needs a symbol the original table omitted.
+     */
+    static Huff fromFrequencies(int[] freq) {
+        java.util.List<Node> leaves = new java.util.ArrayList<>();
+        for (int sym = 0; sym < 256; sym++) {
+            if (freq[sym] > 0) {
+                Node node = new Node();
+                node.sym = sym;
+                node.freq = freq[sym];
+                leaves.add(node);
+            }
+        }
+        if (leaves.isEmpty()) {
+            Node node = new Node();
+            node.sym = 0;
+            node.freq = 1;
+            leaves.add(node);
+        }
+        if (leaves.size() == 1) {
+            Node extra = new Node();
+            extra.sym = leaves.get(0).sym == 0 ? 1 : 0;
+            extra.freq = 1;
+            leaves.add(extra);
+        }
+        java.util.PriorityQueue<Node> queue = new java.util.PriorityQueue<>(leaves);
+        while (queue.size() > 1) {
+            Node left = queue.poll();
+            Node right = queue.poll();
+            Node parent = new Node();
+            parent.freq = left.freq + right.freq;
+            parent.a = left;
+            parent.b = right;
+            queue.add(parent);
+        }
+        int[] lengths = new int[256];
+        measure(queue.poll(), 0, lengths);
+        int[] counts = new int[16];
+        for (int length : lengths) {
+            if (length > 16) {
+                throw new IllegalArgumentException("jpeg: Huffman code longer than 16 bits");
+            }
+            if (length > 0) {
+                counts[length - 1]++;
+            }
+        }
+        byte[] symbols = new byte[leaves.size()];
+        int at = 0;
+        for (int length = 1; length <= 16; length++) {
+            for (int sym = 0; sym < 256; sym++) {
+                if (lengths[sym] == length) {
+                    symbols[at++] = (byte) sym;
+                }
+            }
+        }
+        return build(counts, java.util.Arrays.copyOf(symbols, at));
+    }
+
+    private static void measure(Node node, int depth, int[] lengths) {
+        if (node == null) {
+            return;
+        }
+        if (node.sym >= 0) {
+            lengths[node.sym] = Math.max(depth, 1);
+            return;
+        }
+        measure(node.a, depth + 1, lengths);
+        measure(node.b, depth + 1, lengths);
+    }
+
+    private static final class Node implements Comparable<Node> {
+        int sym = -1;
+        int freq;
+        Node a;
+        Node b;
+
+        @Override
+        public int compareTo(Node other) {
+            return Integer.compare(freq, other.freq);
         }
     }
 

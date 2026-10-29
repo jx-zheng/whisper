@@ -1,24 +1,41 @@
 package com.jxzheng.whisper.gui;
 
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Locale;
 
-import com.jxzheng.whisper.ops.PayloadPreview;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReadParam;
+import javax.imageio.ImageReader;
+
+import com.jxzheng.whisper.crypto.CipherRegistry;
+import com.jxzheng.whisper.crypto.KdfProfile;
+import com.jxzheng.whisper.ops.PayloadOps;
 import com.jxzheng.whisper.ops.StegoOperations;
+import com.jxzheng.whisper.payload.MimeSniffer;
+import com.jxzheng.whisper.payload.NameSanitizer;
+import com.jxzheng.whisper.payload.PayloadKind;
 
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 final class ExtractPane extends BorderPane {
@@ -27,13 +44,20 @@ final class ExtractPane extends BorderPane {
     private final StatusBar status;
     private final ImageCard imageCard = new ImageCard();
     private final TextField imageField = new TextField();
-    private final PassphraseField stegoPassphrase = new PassphraseField("Optional — blank uses the public walk");
-    private final PassphraseField encryptPassphrase = new PassphraseField("Optional — blank uses the public cipher key");
-    private final CheckBox decryptBox = new CheckBox("Decrypt payload (AES-GCM)");
+    private final PassphraseField stegoPassphrase = new PassphraseField("Optional — blank is not confidential");
+    private final PassphraseField encryptPassphrase = new PassphraseField("Optional — blank is not confidential");
+    private final CheckBox decryptBox = new CheckBox("Separate encryption passphrase");
     private final ComboBox<String> schemeBox;
     private final ComboBox<String> cipherBox;
     private final TextArea result = new TextArea();
     private final Label resultMeta = new Label("Extracted message will appear here.");
+    private final Label fileTitle = new Label("File");
+    private final Label fileDetail = new Label(" ");
+    private final VBox fileCard = new VBox(8, fileTitle, fileDetail);
+    private final ImageView imageView = new ImageView();
+    private final Label imageCaption = new Label(" ");
+    private final VBox imagePane = new VBox(8);
+    private String suggestedName = "whisper-payload.bin";
     private final Button extractButton = new Button("Extract message");
     private final Button saveButton = new Button("Save message…");
     private final VBox imageColumn = new VBox(10);
@@ -52,7 +76,7 @@ final class ExtractPane extends BorderPane {
         schemeNames.add("auto");
         schemeNames.addAll(operations.schemes());
         schemeBox = Forms.choice(schemeNames, "auto");
-        cipherBox = Forms.choice(operations.ciphers(), StegoOperations.DEFAULT_CIPHER);
+        cipherBox = Forms.choice(operations.ciphers(), CipherRegistry.CHACHA);
         build();
         disableProperty().bind(status.busyProperty());
     }
@@ -61,7 +85,6 @@ final class ExtractPane extends BorderPane {
         setPadding(new Insets(18));
         imageField.setPromptText("Stego image");
         extractButton.getStyleClass().add("primary");
-        cipherBox.setDisable(true);
         saveButton.setDisable(true);
         result.setEditable(false);
         result.setWrapText(true);
@@ -86,14 +109,31 @@ final class ExtractPane extends BorderPane {
                 decryptBox,
                 encryptKeyField,
                 schemeRow(schemeField, cipherField),
-                Forms.hint("Turn decryption on when the hidden message was encrypted before embedding. "
-                        + "The image itself is not ciphertext. The encryption passphrase is separate from "
-                        + "the stego key and is never copied from it. Blank is the public empty-string AES-GCM key. "
-                        + "Scheme and cipher match --scheme and --cipher.")));
+                Forms.hint("Leave the encryption passphrase off to use the stego passphrase for both. "
+                        + "Turn it on for a separate key, including legacy AES-128. "
+                        + "A blank passphrase is not confidential. Ciphertext is never shown as the payload.")));
         result.setMinWidth(0);
         result.setMaxHeight(Double.MAX_VALUE);
-        VBox resultBody = new VBox(8, resultMeta, result, new HBox(8, saveButton));
-        VBox.setVgrow(result, Priority.ALWAYS);
+        result.getStyleClass().add("paper");
+        fileCard.getStyleClass().add("drop-tile");
+        fileCard.setFillWidth(true);
+        fileTitle.setWrapText(true);
+        fileDetail.setWrapText(true);
+        imageView.setPreserveRatio(true);
+        imageView.setFitWidth(360);
+        imageView.setOnMouseClicked(event -> zoom());
+        imageCaption.getStyleClass().add("hint");
+        imageCaption.setWrapText(true);
+        imagePane.getChildren().addAll(imageView, imageCaption);
+        imagePane.getStyleClass().add("image-tile");
+        fileCard.setVisible(false);
+        fileCard.setManaged(false);
+        imagePane.setVisible(false);
+        imagePane.setManaged(false);
+        StackPane viewers = new StackPane(result, fileCard, imagePane);
+        viewers.setMaxWidth(Double.MAX_VALUE);
+        VBox resultBody = new VBox(8, resultMeta, viewers, new HBox(8, saveButton));
+        VBox.setVgrow(viewers, Priority.ALWAYS);
         VBox resultCard = card("Message", resultBody);
         VBox.setVgrow(resultBody, Priority.ALWAYS);
         HBox actions = new HBox(8, extractButton);
@@ -117,7 +157,6 @@ final class ExtractPane extends BorderPane {
                 reload(false);
             }
         });
-        decryptBox.selectedProperty().addListener((obs, previous, on) -> cipherBox.setDisable(!on));
         extractButton.setOnAction(event -> extract());
         saveButton.setOnAction(event -> save());
         stegoPassphrase.setOnAction(event -> extract());
@@ -214,10 +253,9 @@ final class ExtractPane extends BorderPane {
     private void extract() {
         Path input = pathFrom(imageField.getText());
         String stegoKey = stegoPassphrase.getText();
-        boolean decrypt = decryptBox.isSelected();
-        String encryptKey = decrypt ? encryptPassphrase.getText() : null;
+        boolean separate = decryptBox.isSelected();
+        String encryptKey = separate ? encryptPassphrase.getText() : null;
         String scheme = schemeBox.getValue();
-        String cipher = cipherBox.getValue();
         if (input == null) {
             status.show(StatusBar.Level.ERROR, "Choose a stego image.");
             return;
@@ -226,47 +264,105 @@ final class ExtractPane extends BorderPane {
         status.run("Extracting…", new Task<Extracted>() {
             @Override
             protected Extracted call() throws Exception {
-                if (scheme != null && (scheme.equals("zhang-tang") || scheme.equals("zt")) && !"auto".equals(scheme)) {
-                    BufferedImage image = StegoOperations.readImage(input);
-                    byte[] bytes = operations.extract(image, stegoKey, decrypt, encryptKey, scheme, cipher);
-                    return new Extracted(bytes, "Unverified (legacy format — re-embed to get verification)");
-                }
-                var outcome = new com.jxzheng.whisper.ops.PayloadOps().reveal(
+                PayloadOps.Outcome outcome = new PayloadOps().reveal(
                         input,
                         stegoKey.toCharArray(),
-                        decrypt && encryptKey != null ? encryptKey.toCharArray() : null,
-                        decrypt,
-                        com.jxzheng.whisper.crypto.KdfProfile.DEFAULT,
+                        encryptKey == null ? null : encryptKey.toCharArray(),
+                        separate,
+                        KdfProfile.DEFAULT,
                         scheme);
                 if (!outcome.ok() || outcome.content() == null) {
                     throw new IllegalArgumentException(outcome.message());
                 }
-                return new Extracted(outcome.content(), outcome.message());
+                return new Extracted(
+                        outcome.content(), outcome.message(), outcome.kind(), outcome.name(), outcome.reencoded());
             }
-        }, extracted -> showPayload(extracted.bytes(), extracted.verified()));
+        }, this::showPayload);
     }
 
-    private void showPayload(byte[] bytes, String verified) {
-        payload = bytes;
-        PayloadPreview.View view = PayloadPreview.of(bytes);
-        payloadIsText = view.text();
-        result.setWrapText(view.text());
-        result.setText(view.content());
-        if (view.text() && view.content().isEmpty()) {
-            resultMeta.setText("Recovered 0 bytes (empty message).");
-        } else if (view.text()) {
-            resultMeta.setText("Recovered " + bytes.length + " byte(s) of text.");
+    private void showPayload(Extracted extracted) {
+        payload = extracted.bytes();
+        PayloadKind kind = extracted.kind() == null ? PayloadKind.FILE : extracted.kind();
+        String mime = MimeSniffer.mime(payload);
+        suggestedName = extracted.name() == null || extracted.name().isBlank()
+                ? (kind == PayloadKind.TEXT ? "message.txt" : NameSanitizer.sanitize("", mime))
+                : extracted.name();
+        payloadIsText = kind == PayloadKind.TEXT;
+        String verified = extracted.verified();
+        resultMeta.setText(verified == null ? "Recovered " + payload.length + " byte(s)." : verified);
+        resultMeta.getStyleClass().removeAll("badge-ok", "badge-warn", "badge-bad");
+        if (verified != null && (verified.startsWith("Unverified")
+                || verified.contains("not confidential")
+                || verified.contains("not encrypted"))) {
+            resultMeta.getStyleClass().add("badge-warn");
+        } else if (verified != null && verified.startsWith("Verified")) {
+            resultMeta.getStyleClass().add("badge-ok");
+        }
+        if (kind == PayloadKind.IMAGE) {
+            Image preview = previewImage(payload);
+            if (preview == null) {
+                showFile(suggestedName, payload.length, mime, "Couldn't preview this image");
+            } else {
+                imageView.setImage(preview);
+                imageCaption.setText(imageCaption(suggestedName, preview, payload.length, extracted.reencoded()));
+                showOnly(imagePane);
+            }
+        } else if (kind == PayloadKind.FILE) {
+            showFile(suggestedName, payload.length, mime, null);
         } else {
-            resultMeta.setText("Recovered " + bytes.length
-                    + " binary byte(s). Save the file to keep the exact bytes.");
+            result.setWrapText(true);
+            result.setText(new String(payload, java.nio.charset.StandardCharsets.UTF_8));
+            showOnly(result);
         }
         saveButton.setDisable(false);
-        resultMeta.getStyleClass().removeAll("badge-ok", "badge-warn", "badge-bad");
-        if (verified != null && verified.startsWith("Verified")) {
-            resultMeta.getStyleClass().add(verified.contains("not encrypted") || verified.contains("Unverified")
-                    ? "badge-warn" : "badge-ok");
+        status.show(StatusBar.Level.SUCCESS, resultMeta.getText());
+    }
+
+    private void showFile(String name, int size, String mime, String note) {
+        fileTitle.setText(name);
+        String detail = sizeText(size) + " · " + typeLabel(mime);
+        if (note != null) {
+            detail += "\n" + note;
         }
-        status.show(StatusBar.Level.SUCCESS, verified == null ? "Recovered " + bytes.length + " byte(s)." : verified);
+        if (riskyName(name)) {
+            detail += "\nOnly open files from people you trust.";
+        }
+        fileDetail.setText(detail);
+        showOnly(fileCard);
+    }
+
+    private void showOnly(javafx.scene.Node viewer) {
+        for (javafx.scene.Node node : java.util.List.of(result, fileCard, imagePane)) {
+            boolean on = node == viewer;
+            node.setVisible(on);
+            node.setManaged(on);
+        }
+    }
+
+    private void zoom() {
+        Image image = imageView.getImage();
+        if (image == null) {
+            return;
+        }
+        ImageView big = new ImageView(image);
+        big.setPreserveRatio(true);
+        double fitted = Math.min(Math.max(image.getWidth(), 1), 900);
+        big.setFitWidth(fitted);
+        Button actual = new Button("100%");
+        actual.setOnAction(event -> {
+            if (big.getFitWidth() == image.getWidth()) {
+                big.setFitWidth(fitted);
+                actual.setText("100%");
+            } else {
+                big.setFitWidth(image.getWidth());
+                actual.setText("Fit");
+            }
+        });
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle(suggestedName);
+        dialog.getDialogPane().setContent(new VBox(8, big, actual));
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        dialog.showAndWait();
     }
 
     private void save() {
@@ -274,8 +370,8 @@ final class ExtractPane extends BorderPane {
             status.show(StatusBar.Level.ERROR, "Nothing to save yet.");
             return;
         }
-        var chooser = Choosers.messageSave("Save extracted message", payloadIsText);
-        Choosers.seed(chooser, null, payloadIsText ? "message.txt" : "message.bin");
+        var chooser = Choosers.messageSave("Save extracted payload", payloadIsText);
+        Choosers.seed(chooser, null, suggestedName);
         Path path = Choosers.chooseSave(chooser, getScene() == null ? null : getScene().getWindow());
         if (path == null) {
             return;
@@ -294,11 +390,92 @@ final class ExtractPane extends BorderPane {
     }
 
     private void clearResult() {
+        if (payload != null) {
+            Arrays.fill(payload, (byte) 0);
+        }
         payload = null;
         payloadIsText = true;
+        suggestedName = "whisper-payload.bin";
         result.clear();
+        imageView.setImage(null);
+        imageCaption.setText("");
+        fileTitle.setText("File");
+        fileDetail.setText(" ");
+        resultMeta.getStyleClass().removeAll("badge-ok", "badge-warn", "badge-bad");
         resultMeta.setText("Extracted message will appear here.");
+        showOnly(result);
         saveButton.setDisable(true);
+    }
+
+    /** Decode a preview, or null when the bytes are not an image or exceed the preview limits (F11). */
+    private static Image previewImage(byte[] bytes) {
+        try (var input = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
+            if (input == null) {
+                return null;
+            }
+            var readers = ImageIO.getImageReaders(input);
+            if (!readers.hasNext()) {
+                return null;
+            }
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(input, true, true);
+                int width = reader.getWidth(0);
+                int height = reader.getHeight(0);
+                if (width <= 0 || height <= 0 || width > 20_000 || height > 20_000 || (long) width * height > 40_000_000L) {
+                    return null;
+                }
+                int step = Math.max(1, (Math.max(width, height) + 2047) / 2048);
+                ImageReadParam param = reader.getDefaultReadParam();
+                param.setSourceSubsampling(step, step, 0, 0);
+                BufferedImage decoded = reader.read(0, param);
+                return decoded == null ? null : FxImages.toFx(decoded);
+            } finally {
+                reader.dispose();
+            }
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private static String imageCaption(String name, Image image, int bytes, boolean reencoded) {
+        String caption = name + " · " + (int) image.getWidth() + "×" + (int) image.getHeight()
+                + " · " + sizeText(bytes);
+        if (reencoded) {
+            caption += " · Resized by sender to fit";
+        }
+        return caption;
+    }
+
+    private static String sizeText(int bytes) {
+        if (bytes < 1024) {
+            return bytes + " B";
+        }
+        return String.format(Locale.ROOT, "%.1f KB", bytes / 1024.0);
+    }
+
+    private static String typeLabel(String mime) {
+        return switch (mime) {
+            case "image/png" -> "PNG image";
+            case "image/jpeg" -> "JPEG image";
+            case "image/gif" -> "GIF image";
+            case "image/bmp" -> "BMP image";
+            case "image/webp" -> "WebP image";
+            case "application/pdf" -> "PDF";
+            case "application/zip" -> "ZIP archive";
+            case "text/plain" -> "Text";
+            default -> "File";
+        };
+    }
+
+    private static boolean riskyName(String name) {
+        String lower = name.toLowerCase(Locale.ROOT);
+        for (String ext : new String[] {".exe", ".app", ".sh", ".bat", ".jar", ".command", ".js", ".msi", ".dmg", ".scr"}) {
+            if (lower.endsWith(ext)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static VBox card(String title, javafx.scene.Node body) {
@@ -323,6 +500,6 @@ final class ExtractPane extends BorderPane {
     private record Loaded(BufferedImage preview, int width, int height) {
     }
 
-    private record Extracted(byte[] bytes, String verified) {
+    private record Extracted(byte[] bytes, String verified, PayloadKind kind, String name, boolean reencoded) {
     }
 }

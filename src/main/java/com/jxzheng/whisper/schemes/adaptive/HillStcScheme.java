@@ -8,6 +8,7 @@ import com.jxzheng.whisper.carrier.Carrier;
 import com.jxzheng.whisper.carrier.CarrierProbe;
 import com.jxzheng.whisper.carrier.PngCodec;
 import com.jxzheng.whisper.carrier.RasterImage;
+import com.jxzheng.whisper.exceptions.MessageTooLongException;
 import com.jxzheng.whisper.ops.Progress;
 import com.jxzheng.whisper.schemes.Capacity;
 import com.jxzheng.whisper.schemes.EmbedOptions;
@@ -76,6 +77,13 @@ public final class HillStcScheme implements StegoScheme {
             samples[i] = pixels[i] & 0xff;
         }
         double rate = Math.min(options.preset().rate(), HARD_RATE);
+        int pixelCount = image.width * image.height;
+        int budget = ParityFraming.userBudget(samples.length, pixelCount, rate);
+        if (payload.length > budget + 58) {
+            throw new MessageTooLongException(
+                    "Envelope is " + payload.length + " bytes but this cover holds " + (budget + 58)
+                            + " bytes at this preset (about " + budget + " bytes of content).");
+        }
         ParityFraming.Embedded embedded = ParityFraming.embed(
                 samples, costs, payload, visitSeed, 10, rate, 0, 255, false);
         writePlane(image, embedded.samples());

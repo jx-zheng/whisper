@@ -3,6 +3,7 @@ package com.jxzheng.whisper.schemes.adaptive;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
@@ -13,6 +14,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import com.jxzheng.whisper.exceptions.MessageTooLongException;
 import com.jxzheng.whisper.carrier.BmpCodec;
 import com.jxzheng.whisper.carrier.Carrier;
 import com.jxzheng.whisper.carrier.PngCodec;
@@ -103,6 +105,17 @@ class HillStcTest {
         assertEquals("bmp", hidden.format());
         assertArrayEquals(payload, scheme.extract(hidden, seed, bmpOut));
         assertEquals('B', hidden.encoded()[0]);
+    }
+
+    @Test
+    void rejectsEnvelopeAbovePresetBudget() throws Exception {
+        RasterImage photo = PngCodec.decode(resource("fixtures/png/photo.png"));
+        byte[] payload = new byte[200];
+        byte[] seed = new byte[32];
+        HillStcScheme scheme = new HillStcScheme();
+        EmbedOptions options = new EmbedOptions("", RatePreset.STANDARD, false, "png");
+        assertThrows(MessageTooLongException.class,
+                () -> scheme.embed(Carrier.raster(photo, null, "png"), payload, seed, options, null));
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.jxzheng.whisper.drivers;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -11,6 +12,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class ModernCliTest {
+
+    static {
+        System.setProperty("whisper.kdf.test", "true");
+    }
 
     @Test
     void textHillChaChaAndAesAndIntegrity(@TempDir Path dir) throws Exception {
@@ -45,7 +50,8 @@ class ModernCliTest {
         Path payload = dir.resolve("note.bin");
         Files.write(payload, new byte[] {1, 2, 3, 4, 9});
         Path out = dir.resolve("stego.png");
-        Path saved = dir.resolve("back.bin");
+        Path outDir = dir.resolve("extracted");
+        Files.createDirectories(outDir);
         CliDriver driver = new CliDriver();
         assertEquals(0, driver.run(new String[] {
                 "embed", "-i", cover.toString(), "-o", out.toString(), "--file", payload.toString(),
@@ -53,8 +59,16 @@ class ModernCliTest {
         }));
         assertEquals(0, driver.run(new String[] {
                 "extract", "-i", out.toString(), "--scheme", "auto", "--kdf", "test",
-                "-k", "walk", "-E", "cipher", "--out-dir", dir.toString()
+                "-k", "walk", "-E", "cipher", "--out-dir", outDir.toString()
         }));
+        assertArrayEquals(new byte[] {1, 2, 3, 4, 9}, Files.readAllBytes(outDir.resolve("note.bin")));
+        try (Capture capture = capture()) {
+            assertEquals(1, driver.run(new String[] {
+                    "extract", "-i", out.toString(), "--kdf", "test",
+                    "-k", "walk", "-E", "cipher", "--out-dir", outDir.toString()
+            }));
+            assertTrue(capture.err().contains("Refusing to overwrite"), capture.err());
+        }
         assertEquals(2, driver.run(new String[] {
                 "extract", "-i", out.toString(), "--scheme", "hill-stc", "--kdf", "test", "-k", "walk", "-E", "nope"
         }));

@@ -58,6 +58,7 @@
           <excludedGroups>bench,mem</excludedGroups>
           <systemPropertyVariables>
             <whisper.layout>${whisper.layout}</whisper.layout>
+            <whisper.kdf.test>true</whisper.kdf.test>
           </systemPropertyVariables>
         </configuration>
       </plugin>

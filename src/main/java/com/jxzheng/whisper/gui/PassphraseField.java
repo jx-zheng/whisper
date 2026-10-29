@@ -48,6 +48,10 @@ final class PassphraseField extends HBox {
         return hidden.getText() == null ? "" : hidden.getText();
     }
 
+    javafx.beans.property.StringProperty textProperty() {
+        return hidden.textProperty();
+    }
+
     void setText(String text) {
         hidden.setText(text == null ? "" : text);
     }

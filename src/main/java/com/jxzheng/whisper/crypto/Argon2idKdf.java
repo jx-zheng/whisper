@@ -25,6 +25,9 @@ public final class Argon2idKdf implements PasswordKdf {
         byte[] password = Secrets.utf8(pass);
         try {
             return deriveBytes(password, salt16, null, null, profile.iterations(), profile.memoryKiB(), profile.lanes());
+        } catch (OutOfMemoryError e) {
+            throw new IllegalArgumentException(
+                    "Out of memory. The high Argon2id profile needs about 2 GiB of RAM. Use --kdf default.", e);
         } finally {
             Secrets.wipe(password);
         }
