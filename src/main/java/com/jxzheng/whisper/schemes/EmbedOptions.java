@@ -6,7 +6,7 @@ package com.jxzheng.whisper.schemes;
  * <p>The legacy Zhang–Tang walk still takes the stego passphrase as a string.
  * Adaptive schemes ignore it and use the derived visit seed instead.
  */
-public record EmbedOptions(String stegoKey, RatePreset preset, boolean keepMetadata) {
+public record EmbedOptions(String stegoKey, RatePreset preset, boolean keepMetadata, String outputFormat) {
 
     public EmbedOptions {
         if (stegoKey == null) {
@@ -16,9 +16,16 @@ public record EmbedOptions(String stegoKey, RatePreset preset, boolean keepMetad
         if (preset == null) {
             preset = RatePreset.STANDARD;
         }
+        if (outputFormat == null || outputFormat.isBlank()) {
+            outputFormat = "png";
+        }
+    }
+
+    public EmbedOptions(String stegoKey, RatePreset preset, boolean keepMetadata) {
+        this(stegoKey, preset, keepMetadata, "png");
     }
 
     public static EmbedOptions legacy(String stegoKey) {
-        return new EmbedOptions(stegoKey, RatePreset.STANDARD, false);
+        return new EmbedOptions(stegoKey, RatePreset.STANDARD, false, "png");
     }
 }
