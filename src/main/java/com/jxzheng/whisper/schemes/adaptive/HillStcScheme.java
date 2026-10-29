@@ -69,12 +69,20 @@ public final class HillStcScheme implements StegoScheme {
             progress.stage("Embedding");
         }
         RasterImage image = copy(raster(cover));
-        Plane plane = plane(image);
-        float[] costs = HillCost.floats(plane.pixels, image.width, image.height);
+        byte[] pixels = greenBytes(image);
+        float[] costs = HillCost.floats(pixels, image.width, image.height);
+        int[] samples = new int[pixels.length];
+        for (int i = 0; i < pixels.length; i++) {
+            samples[i] = pixels[i] & 0xff;
+        }
         double rate = Math.min(options.preset().rate(), HARD_RATE);
         ParityFraming.Embedded embedded = ParityFraming.embed(
-                plane.samples, costs, payload, visitSeed, 10, rate, 0, 255, false);
+                samples, costs, payload, visitSeed, 10, rate, 0, 255, false);
         writePlane(image, embedded.samples());
+        pixels = null;
+        samples = null;
+        costs = null;
+        embedded = null;
         boolean bmp = "bmp".equalsIgnoreCase(options.outputFormat());
         byte[] encoded = bmp ? BmpCodec.write(image) : PngCodec.encode(image, options.keepMetadata());
         byte[] check = bmp
@@ -107,6 +115,20 @@ public final class HillStcScheme implements StegoScheme {
             return carrier.raster();
         }
         throw new IllegalArgumentException("hill-stc needs a decoded PNG or BMP raster");
+    }
+
+    private static byte[] greenBytes(RasterImage image) {
+        int spp = image.spp();
+        if (spp == 0) {
+            throw new IllegalArgumentException("png: bad color type");
+        }
+        int off = spp >= 3 ? 1 : 0;
+        int n = image.width * image.height;
+        byte[] pixels = new byte[n];
+        for (int i = 0; i < n; i++) {
+            pixels[i] = image.samples[i * spp + off];
+        }
+        return pixels;
     }
 
     public static Plane plane(RasterImage image) {

@@ -6,9 +6,9 @@
 
   <groupId>com.jxzheng.whisper</groupId>
   <artifactId>whisper</artifactId>
-  <version>0.9.0</version>
+  <version>1.0.0</version>
   <name>whisper</name>
-  <description>Secure steganographic communication via Zhang-Tang image embedding</description>
+  <description>Adaptive image steganography with authenticated payloads</description>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

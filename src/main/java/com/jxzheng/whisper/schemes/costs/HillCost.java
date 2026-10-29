@@ -2,7 +2,7 @@ package com.jxzheng.whisper.schemes.costs;
 
 /**
  * HILL distortion (Li, Wang, Huang, Li, ICIP 2014): KB residual, absolute value,
- * 3×3 mean, reciprocal, then a 15×15 mean. Box filters use prefix sums.
+ * 3×3 mean, reciprocal, then a 15×15 mean. Box filters use prefix sums and two buffers.
  */
 public final class HillCost {
 
@@ -13,22 +13,25 @@ public final class HillCost {
         if (width <= 0 || height <= 0 || pixels == null || pixels.length != width * height) {
             throw new IllegalArgumentException("hill: sample buffer does not match the plane");
         }
-        double[] src = new double[pixels.length];
+        double[] a = new double[pixels.length];
+        double[] b = new double[pixels.length];
         for (int i = 0; i < pixels.length; i++) {
-            src[i] = pixels[i] & 0xff;
+            a[i] = pixels[i] & 0xff;
         }
-        double[] residual = kb(src, width, height);
-        for (int i = 0; i < residual.length; i++) {
-            if (residual[i] < 0) {
-                residual[i] = -residual[i];
+        kb(a, b, width, height);
+        for (int i = 0; i < b.length; i++) {
+            if (b[i] < 0) {
+                b[i] = -b[i];
             }
         }
-        double[] smooth = box(residual, width, height, 3);
-        double[] rho = new double[pixels.length];
-        for (int i = 0; i < smooth.length; i++) {
-            rho[i] = 1.0 / (smooth[i] + 1e-6);
+        // 3×3 mean of |residual| lands in a.
+        mean(b, a, width, height, 3);
+        for (int i = 0; i < a.length; i++) {
+            b[i] = 1.0 / (a[i] + 1e-6);
         }
-        return box(rho, width, height, 15);
+        // 15×15 mean lands in a.
+        mean(b, a, width, height, 15);
+        return a;
     }
 
     public static float[] floats(byte[] pixels, int width, int height) {
@@ -40,9 +43,8 @@ public final class HillCost {
         return out;
     }
 
-    private static double[] kb(double[] src, int w, int h) {
-        double[] k = {-1, 2, -1, 2, -4, 2, -1, 2, -1};
-        double[] dst = new double[w * h];
+    private static void kb(double[] src, double[] dst, int w, int h) {
+        double[] kernel = {-1, 2, -1, 2, -4, 2, -1, 2, -1};
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
                 double sum = 0;
@@ -50,21 +52,24 @@ public final class HillCost {
                 for (int dy = -1; dy <= 1; dy++) {
                     int yy = clamp(y + dy, h);
                     for (int dx = -1; dx <= 1; dx++) {
-                        int xx = clamp(x + dx, w);
-                        sum += src[yy * w + xx] * k[ki++];
+                        sum += src[yy * w + clamp(x + dx, w)] * kernel[ki++];
                     }
                 }
                 dst[y * w + x] = sum;
             }
         }
-        return dst;
     }
 
-    static double[] box(double[] src, int w, int h, int k) {
-        int r = k / 2;
-        double[] tmp = new double[w * h];
-        double[] dst = new double[w * h];
-        double[] prefix = new double[Math.max(w, h) + 1];
+    /** Separable replicate-border box mean. Result is written to {@code dst}. {@code src} is scratch. */
+    private static void mean(double[] src, double[] dst, int w, int h, int k) {
+        horizontal(src, dst, w, h, k);
+        vertical(dst, src, w, h, k);
+        System.arraycopy(src, 0, dst, 0, src.length);
+    }
+
+    private static void horizontal(double[] src, double[] dst, int w, int h, int k) {
+        int radius = k / 2;
+        double[] prefix = new double[w + 1];
         for (int y = 0; y < h; y++) {
             int row = y * w;
             prefix[0] = 0;
@@ -74,44 +79,44 @@ public final class HillCost {
             double left = src[row];
             double right = src[row + w - 1];
             for (int x = 0; x < w; x++) {
-                int from = x - r;
-                int to = x + r;
-                int extraL = from < 0 ? -from : 0;
-                int extraR = to >= w ? to - (w - 1) : 0;
-                int cl = Math.max(from, 0);
-                int cr = Math.min(to, w - 1);
-                double sum = prefix[cr + 1] - prefix[cl] + extraL * left + extraR * right;
-                tmp[row + x] = sum / k;
+                dst[row + x] = window(prefix, left, right, x, radius, w) / k;
             }
         }
+    }
+
+    private static void vertical(double[] src, double[] dst, int w, int h, int k) {
+        int radius = k / 2;
+        double[] prefix = new double[h + 1];
         for (int x = 0; x < w; x++) {
             prefix[0] = 0;
             for (int y = 0; y < h; y++) {
-                prefix[y + 1] = prefix[y] + tmp[y * w + x];
+                prefix[y + 1] = prefix[y] + src[y * w + x];
             }
-            double top = tmp[x];
-            double bottom = tmp[(h - 1) * w + x];
+            double top = src[x];
+            double bottom = src[(h - 1) * w + x];
             for (int y = 0; y < h; y++) {
-                int from = y - r;
-                int to = y + r;
-                int extraT = from < 0 ? -from : 0;
-                int extraB = to >= h ? to - (h - 1) : 0;
-                int ct = Math.max(from, 0);
-                int cb = Math.min(to, h - 1);
-                double sum = prefix[cb + 1] - prefix[ct] + extraT * top + extraB * bottom;
-                dst[y * w + x] = sum / k;
+                dst[y * w + x] = window(prefix, top, bottom, y, radius, h) / k;
             }
         }
-        return dst;
     }
 
-    private static int clamp(int v, int n) {
-        if (v < 0) {
+    private static double window(double[] prefix, double edgeStart, double edgeEnd, int at, int radius, int n) {
+        int from = at - radius;
+        int to = at + radius;
+        int extraStart = from < 0 ? -from : 0;
+        int extraEnd = to >= n ? to - (n - 1) : 0;
+        int start = Math.max(from, 0);
+        int end = Math.min(to, n - 1);
+        return prefix[end + 1] - prefix[start] + extraStart * edgeStart + extraEnd * edgeEnd;
+    }
+
+    private static int clamp(int value, int limit) {
+        if (value < 0) {
             return 0;
         }
-        if (v >= n) {
-            return n - 1;
+        if (value >= limit) {
+            return limit - 1;
         }
-        return v;
+        return value;
     }
 }
