@@ -13,9 +13,6 @@ public interface AeadSuite {
     /** Wire value for envelope flag bits 5–6. */
     int suiteBits();
 
-    /** Tag bytes added to a body of {@code bodyLen} bytes. */
-    int overhead(int bodyLen);
-
     /**
      * Encrypts {@code inLen} bytes and writes ciphertext || 16-byte tag at {@code outOff}.
      *

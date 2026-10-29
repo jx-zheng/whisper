@@ -63,7 +63,7 @@ class UerdStcTest {
             for (int n = 0; n < 50; n++) {
                 byte[] payload = new byte[1 + random.nextInt(12)];
                 random.nextBytes(payload);
-                Carrier stego = scheme.embed(Carrier.encoded(file, "jpg"), payload, seed, options, null);
+                Carrier stego = scheme.embed(Carrier.encoded(file, "jpg"), payload, seed, options);
                 assertArrayEquals(payload, scheme.extract(stego, seed, options));
                 assertTrue(ImageIO.read(new ByteArrayInputStream(stego.encoded())) != null);
                 if (n == 0) {

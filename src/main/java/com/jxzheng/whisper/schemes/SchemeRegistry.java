@@ -45,7 +45,7 @@ public final class SchemeRegistry {
         return switch (name) {
             case "hill", "hill-stc" -> HillStcScheme.ID;
             case "uerd", "uerd-stc", "jpeg" -> UerdStcScheme.ID;
-            case "zhang-tang", "zhangtang", "zt" -> ZhangTangStegoScheme.ID;
+            case "zhang-tang", "zhangtang", "zt" -> "zhang-tang";
             default -> throw new IllegalArgumentException("Unsupported scheme: " + scheme);
         };
     }

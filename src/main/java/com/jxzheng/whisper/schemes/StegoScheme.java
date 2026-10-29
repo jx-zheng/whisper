@@ -1,7 +1,6 @@
 package com.jxzheng.whisper.schemes;
 
 import com.jxzheng.whisper.carrier.Carrier;
-import com.jxzheng.whisper.ops.Progress;
 
 /**
  * One way of hiding an already-packaged byte string in a cover.
@@ -14,10 +13,8 @@ public interface StegoScheme {
 
     String id();
 
-    /**
-     * @param visitSeed 32-byte embedding seed for adaptive schemes; ignored by Zhang–Tang
-     */
-    Carrier embed(Carrier cover, byte[] payload, byte[] visitSeed, EmbedOptions options, Progress progress);
+    /** {@code visitSeed} is the 32-byte embedding seed for adaptive schemes. */
+    Carrier embed(Carrier cover, byte[] payload, byte[] visitSeed, EmbedOptions options);
 
     byte[] extract(Carrier stego, byte[] visitSeed, EmbedOptions options);
 }

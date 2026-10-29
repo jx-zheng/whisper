@@ -324,6 +324,11 @@ class CliDriverTest {
             assertTrue(note.stderr().contains("AES-GCM tag OK"), note.stderr());
         }
         assertEquals("empty-aes", Files.readString(out));
+        Path aesOut = dir.resolve("aes-flag.txt");
+        assertEquals(0, new CliDriver().run(new String[] {
+                "extract", "-i", stego.toString(), "-k", "walk", "-c", "aes", "-o", aesOut.toString()
+        }));
+        assertEquals("empty-aes", Files.readString(aesOut));
     }
 
     @Test

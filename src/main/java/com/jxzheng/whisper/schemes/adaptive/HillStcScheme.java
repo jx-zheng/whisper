@@ -7,7 +7,6 @@ import com.jxzheng.whisper.carrier.Carrier;
 import com.jxzheng.whisper.carrier.PngCodec;
 import com.jxzheng.whisper.carrier.RasterImage;
 import com.jxzheng.whisper.exceptions.MessageTooLongException;
-import com.jxzheng.whisper.ops.Progress;
 import com.jxzheng.whisper.schemes.EmbedOptions;
 import com.jxzheng.whisper.schemes.StegoScheme;
 import com.jxzheng.whisper.schemes.costs.HillCost;
@@ -29,10 +28,7 @@ public final class HillStcScheme implements StegoScheme {
     }
 
     @Override
-    public Carrier embed(Carrier cover, byte[] payload, byte[] visitSeed, EmbedOptions options, Progress progress) {
-        if (progress != null) {
-            progress.stage("Embedding");
-        }
+    public Carrier embed(Carrier cover, byte[] payload, byte[] visitSeed, EmbedOptions options) {
         RasterImage image = copy(raster(cover));
         byte[] pixels = greenBytes(image);
         float[] costs = HillCost.floats(pixels, image.width, image.height);

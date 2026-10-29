@@ -13,17 +13,14 @@ import javax.imageio.ImageIO;
 
 import com.jxzheng.whisper.analysis.ChiSquareAnalyzer;
 import com.jxzheng.whisper.analysis.RsAnalyzer;
-import com.jxzheng.whisper.carrier.Carrier;
 import com.jxzheng.whisper.crypto.CipherRegistry;
 import com.jxzheng.whisper.encryption.AesCipher;
 import com.jxzheng.whisper.encryption.CipherService;
 import com.jxzheng.whisper.exceptions.EncryptionException;
-import com.jxzheng.whisper.exceptions.MessageTooLongException;
 import com.jxzheng.whisper.media.ImageFormats;
 import com.jxzheng.whisper.schemes.AbstractScheme;
-import com.jxzheng.whisper.schemes.EmbedOptions;
 import com.jxzheng.whisper.schemes.SchemeRegistry;
-import com.jxzheng.whisper.schemes.ZhangTangStegoScheme;
+import com.jxzheng.whisper.schemes.ZhangTangScheme;
 
 /**
  * Embed, extract, and analyze entry points shared by the CLI and the desktop app.
@@ -48,47 +45,7 @@ public final class StegoOperations {
     }
 
     /**
-     * Embeds {@code message}. {@code stegoKey} selects the pixel walk and may be empty,
-     * which is the public default walk. When {@code encrypt} is true, {@code encryptKey}
-     * is the AES-GCM passphrase and is never taken from {@code stegoKey}; an empty
-     * string is the public empty-passphrase cipher key, and {@code null} is rejected.
-     * When {@code encrypt} is false, {@code encryptKey} is ignored.
-     */
-    EmbedResult embed(
-            BufferedImage cover,
-            byte[] message,
-            String stegoKey,
-            boolean encrypt,
-            String encryptKey,
-            String scheme,
-            String cipher) throws EncryptionException {
-        if (cover == null) {
-            throw new IllegalArgumentException("image must not be null");
-        }
-        if (message == null) {
-            throw new IllegalArgumentException("message must not be null");
-        }
-        String walkKey = requireStegoKey(stegoKey);
-        canonicalScheme(scheme);
-        String cipherKey = encrypt ? requireEncryptKey(encryptKey) : null;
-        CipherService cipherService = encrypt ? createCipher(cipher) : null;
-        if (!fits(cover.getWidth(), cover.getHeight(), message.length, encrypt)) {
-            throw capacityError(cover.getWidth(), cover.getHeight(), message.length, encrypt);
-        }
-
-        byte[] payload = cipherService == null ? message : cipherService.encrypt(message, cipherKey);
-        if (payload.length > AbstractScheme.MAX_PAYLOAD_LENGTH) {
-            throw new MessageTooLongException(
-                    "Message exceeds max message length of " + AbstractScheme.MAX_PAYLOAD_LENGTH);
-        }
-        BufferedImage stego = new ZhangTangStegoScheme()
-                .embed(Carrier.of(cover), payload, null, EmbedOptions.legacy(walkKey), Progress.NONE)
-                .image();
-        return new EmbedResult(stego, payload.length);
-    }
-
-    /**
-     * Extracts a payload. {@code stegoKey} must be the walk used at embed time,
+     * Extracts a 0.9 payload. {@code stegoKey} must be the walk used at embed time,
      * including the empty public default. When {@code decrypt} is true,
      * {@code encryptKey} is the AES-GCM passphrase and is never taken from
      * {@code stegoKey}.
@@ -109,8 +66,7 @@ public final class StegoOperations {
             createCipher(cipher);
         }
         canonicalScheme(scheme);
-        byte[] payload = new ZhangTangStegoScheme()
-                .extract(Carrier.of(stego), null, EmbedOptions.legacy(walkKey));
+        byte[] payload = new ZhangTangScheme(stego, walkKey).extractMessage();
         if (decrypt) {
             payload = createCipher(cipher).decrypt(payload, cipherKey);
         }
@@ -203,21 +159,6 @@ public final class StegoOperations {
         } catch (MalformedInputException e) {
             throw new IOException("Message file is not valid UTF-8: " + path, e);
         }
-    }
-
-    private static MessageTooLongException capacityError(int width, int height, int plaintextBytes, boolean encrypt) {
-        int max = maxPayloadBytes(width, height);
-        if (max < 0) {
-            int needed = AbstractScheme.HEADER_POINTS + 1;
-            return new MessageTooLongException(
-                    "Image is too small to hold a whisper payload (need at least " + needed + " pixels).");
-        }
-        int packaged = packagedLength(plaintextBytes, encrypt);
-        String extra = encrypt
-                ? " AES-GCM adds " + AesCipher.OVERHEAD_BYTES + " bytes."
-                : "";
-        return new MessageTooLongException(
-                "Message needs " + packaged + " embedded byte(s) but this image can hold " + max + "." + extra);
     }
 
     private static String canonicalScheme(String scheme) {

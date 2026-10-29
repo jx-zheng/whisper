@@ -35,6 +35,9 @@ public final class Argon2idKdf implements PasswordKdf {
         try {
             return deriveBytes(password, salt16, null, null, profile.iterations(), profile.memoryKiB(), profile.lanes());
         } catch (OutOfMemoryError e) {
+            if (profile != KdfProfile.HIGH) {
+                throw e;
+            }
             String message = reveal
                     ? "Out of memory. The sender used the high Argon2id profile. Rerun with more heap, for example JAVA_TOOL_OPTIONS=-Xmx3g."
                     : "Out of memory. The high Argon2id profile needs about 2 GiB of RAM. Use --kdf default.";

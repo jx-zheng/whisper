@@ -30,11 +30,6 @@ public final class ChaCha20Poly1305Suite implements AeadSuite {
     }
 
     @Override
-    public int overhead(int bodyLen) {
-        return Stream.cipherLen(bodyLen) - Math.max(bodyLen, 0);
-    }
-
-    @Override
     public int seal(byte[] key32, byte[] nonce12, byte[] aad, byte[] in, int inOff, int inLen, byte[] out, int outOff)
             throws AuthException {
         return transform(Cipher.ENCRYPT_MODE, key32, nonce12, aad, in, inOff, inLen, out, outOff);

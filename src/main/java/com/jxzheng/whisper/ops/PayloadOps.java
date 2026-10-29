@@ -115,14 +115,9 @@ public final class PayloadOps {
         }
     }
 
-    public Outcome reveal(Path input, char[] stego, char[] enc, boolean split, KdfProfile profile, String schemeId)
-            throws Exception {
-        return reveal(input, stego, enc, split, profile, schemeId, false);
-    }
-
     public Outcome reveal(
-            Path input, char[] stego, char[] enc, boolean split, KdfProfile profile, String schemeId, boolean legacyEmpty)
-            throws Exception {
+            Path input, char[] stego, char[] enc, boolean split, KdfProfile profile, String schemeId,
+            boolean legacyEmpty, String highProfileNote) throws Exception {
         byte[] file = Files.readAllBytes(input);
         String format = sniff(file);
         boolean auto = schemeId == null || schemeId.isBlank() || "auto".equalsIgnoreCase(schemeId);
@@ -131,14 +126,14 @@ public final class PayloadOps {
             Outcome outcome;
             if ("auto".equals(scheme)) {
                 if ("jpeg".equals(format)) {
-                    outcome = revealUerd(file, stego, enc, split, profile);
+                    outcome = revealUerd(file, stego, enc, split, profile, highProfileNote);
                 } else {
-                    outcome = revealAutoRaster(file, format, stego, enc, split, profile, legacyEmpty);
+                    outcome = revealAutoRaster(file, format, stego, enc, split, profile, legacyEmpty, highProfileNote);
                 }
             } else {
                 outcome = switch (scheme) {
-                    case "hill-stc" -> revealHill(file, format, stego, enc, split, profile);
-                    case "uerd-stc" -> revealUerd(file, stego, enc, split, profile);
+                    case "hill-stc" -> revealHill(file, format, stego, enc, split, profile, highProfileNote);
+                    case "uerd-stc" -> revealUerd(file, stego, enc, split, profile, highProfileNote);
                     default -> revealZhang(file, stego, enc, legacyEmpty);
                 };
             }
@@ -159,9 +154,9 @@ public final class PayloadOps {
         return switch (scheme) {
             case "hill-stc" -> {
                 RasterImage image = "bmp".equals(format) ? BmpCodec.read(cover) : pngOrConvert(cover);
-                yield hill.embed(Carrier.raster(image, cover, format), envelope, visit, options, Progress.NONE).encoded();
+                yield hill.embed(Carrier.raster(image, cover, format), envelope, visit, options).encoded();
             }
-            case "uerd-stc" -> uerd.embed(Carrier.encoded(cover, "jpg"), envelope, visit, options, Progress.NONE).encoded();
+            case "uerd-stc" -> uerd.embed(Carrier.encoded(cover, "jpg"), envelope, visit, options).encoded();
             default -> throw new IllegalArgumentException(
                     "Zhang–Tang is decrypt-only. New embeds use hill-stc or uerd-stc.");
         };
@@ -185,13 +180,14 @@ public final class PayloadOps {
 
     private Outcome revealBytes(byte[] stego, char[] pass, char[] enc, boolean split, KdfProfile profile, String scheme) throws Exception {
         return switch (scheme) {
-            case "hill-stc" -> revealHill(stego, sniff(stego), Secrets.copy(pass), Secrets.copy(enc), split, profile);
-            case "uerd-stc" -> revealUerd(stego, Secrets.copy(pass), Secrets.copy(enc), split, profile);
+            case "hill-stc" -> revealHill(stego, sniff(stego), Secrets.copy(pass), Secrets.copy(enc), split, profile, null);
+            case "uerd-stc" -> revealUerd(stego, Secrets.copy(pass), Secrets.copy(enc), split, profile, null);
             default -> revealZhang(stego, Secrets.copy(pass), Secrets.copy(enc), false);
         };
     }
 
-    private Outcome revealHill(byte[] file, String format, char[] stego, char[] enc, boolean split, KdfProfile profile) {
+    private Outcome revealHill(
+            byte[] file, String format, char[] stego, char[] enc, boolean split, KdfProfile profile, String highProfileNote) {
         RasterImage image;
         try {
             image = "bmp".equals(format) ? BmpCodec.read(file) : PngCodec.decode(file);
@@ -207,10 +203,11 @@ public final class PayloadOps {
                 }
             }
         }
-        return fail(3, nothingFound(profile));
+        return fail(3, nothingFound(profile, highProfileNote));
     }
 
-    private Outcome revealUerd(byte[] file, char[] stego, char[] enc, boolean split, KdfProfile profile) {
+    private Outcome revealUerd(
+            byte[] file, char[] stego, char[] enc, boolean split, KdfProfile profile, String highProfileNote) {
         JpegCoefficients jpeg;
         try {
             jpeg = JpegCoefficients.parse(file);
@@ -226,7 +223,7 @@ public final class PayloadOps {
                 }
             }
         }
-        return fail(3, nothingFound(profile));
+        return fail(3, nothingFound(profile, highProfileNote));
     }
 
     private Outcome tryFramed(
@@ -253,9 +250,10 @@ public final class PayloadOps {
      * HILL also misses, so a false header does not hide a modern payload.
      */
     private Outcome revealAutoRaster(
-            byte[] file, String format, char[] stego, char[] enc, boolean split, KdfProfile profile, boolean legacyEmpty) {
+            byte[] file, String format, char[] stego, char[] enc, boolean split, KdfProfile profile,
+            boolean legacyEmpty, String highProfileNote) {
         Outcome zhang = revealZhang(file, stego, enc, legacyEmpty);
-        Outcome hill = revealHill(file, format, stego, enc, split, profile);
+        Outcome hill = revealHill(file, format, stego, enc, split, profile, highProfileNote);
         if (hill.ok() || hill.exitCode() == 2) {
             return hill;
         }
@@ -408,10 +406,9 @@ public final class PayloadOps {
         return VerifyMessages.WRONG_ENCRYPTION;
     }
 
-    private static String nothingFound(KdfProfile profile) {
-        if (profile == KdfProfile.DEFAULT) {
-            return VerifyMessages.NOTHING_FOUND
-                    + " If the sender used the high-memory key profile, opening it needs about 2 GiB of RAM.";
+    private static String nothingFound(KdfProfile profile, String highProfileNote) {
+        if (profile == KdfProfile.DEFAULT && highProfileNote != null && !highProfileNote.isBlank()) {
+            return VerifyMessages.NOTHING_FOUND + highProfileNote;
         }
         return VerifyMessages.NOTHING_FOUND;
     }

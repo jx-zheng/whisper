@@ -25,11 +25,12 @@ public final class BmpCodec {
         if (planes != 1 || compression != 0 || (bits != 24 && bits != 32)) {
             throw new IllegalArgumentException("bmp: only uncompressed 24-bit and 32-bit images are supported");
         }
+        // BI_RGB stores a padding byte in 32-bit files. It is not an alpha channel.
         if (width <= 0 || height <= 0 || width > 20_000 || height > 20_000) {
             throw new IllegalArgumentException("bmp: unreasonable dimensions");
         }
-        int spp = bits == 24 ? 3 : 4;
-        int colorType = bits == 24 ? 2 : 6;
+        int spp = 3;
+        int colorType = 2;
         int rowBytes = ((width * (bits / 8) + 3) / 4) * 4;
         if (pixelOffset < 0 || (long) pixelOffset + (long) rowBytes * height > file.length) {
             throw new IllegalArgumentException("bmp: truncated pixel data");
@@ -48,9 +49,6 @@ public final class BmpCodec {
                 image.samples[dst + x * spp] = file[p + 2];
                 image.samples[dst + x * spp + 1] = file[p + 1];
                 image.samples[dst + x * spp + 2] = file[p];
-                if (spp == 4) {
-                    image.samples[dst + x * spp + 3] = file[p + 3];
-                }
             }
         }
         return image;

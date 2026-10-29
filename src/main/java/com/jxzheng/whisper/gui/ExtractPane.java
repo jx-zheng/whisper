@@ -255,7 +255,9 @@ final class ExtractPane extends BorderPane {
                         encryptKey == null ? null : encryptKey.toCharArray(),
                         separate,
                         KdfProfile.DEFAULT,
-                        scheme);
+                        scheme,
+                        false,
+                        " High-profile embeds open only from the command line.");
                 if (!outcome.ok() || outcome.content() == null) {
                     throw new IllegalArgumentException(outcome.message());
                 }

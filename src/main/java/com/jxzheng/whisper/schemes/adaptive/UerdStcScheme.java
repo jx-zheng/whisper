@@ -5,7 +5,6 @@ import java.util.Arrays;
 import com.jxzheng.whisper.carrier.Carrier;
 import com.jxzheng.whisper.carrier.JpegCoefficients;
 import com.jxzheng.whisper.exceptions.MessageTooLongException;
-import com.jxzheng.whisper.ops.Progress;
 import com.jxzheng.whisper.schemes.EmbedOptions;
 import com.jxzheng.whisper.schemes.StegoScheme;
 import com.jxzheng.whisper.schemes.costs.UerdCost;
@@ -27,10 +26,7 @@ public final class UerdStcScheme implements StegoScheme {
     }
 
     @Override
-    public Carrier embed(Carrier cover, byte[] payload, byte[] visitSeed, EmbedOptions options, Progress progress) {
-        if (progress != null) {
-            progress.stage("Embedding");
-        }
+    public Carrier embed(Carrier cover, byte[] payload, byte[] visitSeed, EmbedOptions options) {
         JpegCoefficients jpeg = jpeg(cover);
         int nz = jpeg.nzac();
         if (nz == 0) {
@@ -45,8 +41,18 @@ public final class UerdStcScheme implements StegoScheme {
         int[] luma = jpeg.luma().clone();
         float[] rho = UerdCost.floats(luma, jpeg.blocksX(), jpeg.blocksY(), jpeg.lumaQuant());
         Ac ac = ac(luma, rho);
-        ParityFraming.Embedded embedded = ParityFraming.embed(
-                ac.samples, ac.costs, payload, visitSeed, 10, rate, Integer.MIN_VALUE, Integer.MAX_VALUE, true);
+        ParityFraming.Embedded embedded;
+        try {
+            embedded = ParityFraming.embed(
+                    ac.samples, ac.costs, payload, visitSeed, 10, rate, Integer.MIN_VALUE, Integer.MAX_VALUE, true);
+        } catch (IllegalArgumentException ex) {
+            if (ex.getMessage() != null && ex.getMessage().contains("no embedding path")) {
+                throw new MessageTooLongException(
+                        "This JPEG cannot hold the payload at this preset (" + nz + " nonzero AC, cap " + rate
+                                + " bpnzAC).");
+            }
+            throw ex;
+        }
         for (int i = 0; i < ac.back.length; i++) {
             luma[ac.back[i]] = embedded.samples()[i];
         }

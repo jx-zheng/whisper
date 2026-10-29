@@ -26,7 +26,7 @@ public final class PngCodec {
             throw new IllegalArgumentException("png: not a PNG");
         }
         RasterImage image = new RasterImage();
-        byte[] idat = new byte[0];
+        java.io.ByteArrayOutputStream idat = new java.io.ByteArrayOutputStream();
         boolean ihdr = false;
         int i = SIG.length;
         while (i + 12 <= file.length) {
@@ -51,12 +51,12 @@ public final class PngCodec {
                     parseIhdr(image, file, dataAt, n);
                     ihdr = true;
                 }
-                case "IDAT" -> idat = concat(idat, file, dataAt, n);
+                case "IDAT" -> idat.write(file, dataAt, n);
                 case "IEND" -> {
                     if (!ihdr) {
                         throw new IllegalArgumentException("png: missing IHDR");
                     }
-                    image.samples = inflate(image, idat);
+                    image.samples = inflate(image, idat.toByteArray());
                     return image;
                 }
                 case "PLTE" -> throw new IllegalArgumentException(
@@ -356,12 +356,6 @@ public final class PngCodec {
         crc.update(data);
         put32(out, p + 8 + data.length, (int) crc.getValue());
         return p + 12 + data.length;
-    }
-
-    private static byte[] concat(byte[] left, byte[] src, int off, int n) {
-        byte[] out = Arrays.copyOf(left, left.length + n);
-        System.arraycopy(src, off, out, left.length, n);
-        return out;
     }
 
     private static boolean matchesSig(byte[] file) {

@@ -32,7 +32,7 @@ class StegoOperationsTest {
         BufferedImage cover = noise(48, 48, 3);
         byte[] message = "alias".getBytes(StandardCharsets.UTF_8);
 
-        BufferedImage stego = operations.embed(cover, message, "key", false, null, "ZT", "aes").image();
+        BufferedImage stego = LegacyEmbed.embed(cover, message, "key", false, null, "ZT", "aes").image();
         byte[] recovered = operations.extract(stego, "key", false, null, "zhangtang", "aes");
 
         assertArrayEquals(message, recovered);
@@ -43,7 +43,7 @@ class StegoOperationsTest {
         BufferedImage cover = noise(64, 64, 9);
         byte[] message = "secret".getBytes(StandardCharsets.UTF_8);
 
-        StegoOperations.EmbedResult result = operations.embed(
+        StegoOperations.EmbedResult result = LegacyEmbed.embed(
                 cover, message, "passphrase", true, "passphrase", "zhang-tang", "aes");
         assertEquals(message.length + AesCipher.OVERHEAD_BYTES, result.payloadBytes());
 
@@ -59,7 +59,7 @@ class StegoOperationsTest {
         byte[] message = "file".getBytes(StandardCharsets.UTF_8);
 
         BufferedImage cover = StegoOperations.readImage(coverPath);
-        StegoOperations.EmbedResult result = operations.embed(cover, message, "k", false, null, null, null);
+        StegoOperations.EmbedResult result = LegacyEmbed.embed(cover, message, "k", false, null, null, null);
         StegoOperations.writeStego(result.image(), stegoPath);
 
         byte[] recovered = operations.extract(StegoOperations.readImage(stegoPath), "k", false, null, null, null);
@@ -79,11 +79,11 @@ class StegoOperationsTest {
         int max = StegoOperations.maxPayloadBytes(width, height);
         assertTrue(max > 0);
         BufferedImage image = noise(width, height, 4);
-        operations.embed(image, new byte[max], "k", false, null, "zhang-tang", "aes");
+        LegacyEmbed.embed(image, new byte[max], "k", false, null, "zhang-tang", "aes");
         assertThrows(MessageTooLongException.class,
-                () -> operations.embed(image, new byte[max + 1], "k", false, null, "zhang-tang", "aes"));
+                () -> LegacyEmbed.embed(image, new byte[max + 1], "k", false, null, "zhang-tang", "aes"));
         assertThrows(MessageTooLongException.class,
-                () -> operations.embed(noise(8, 1, 1), new byte[0], "k", false, null, "zhang-tang", "aes"));
+                () -> LegacyEmbed.embed(noise(8, 1, 1), new byte[0], "k", false, null, "zhang-tang", "aes"));
     }
 
     @Test
@@ -101,20 +101,20 @@ class StegoOperationsTest {
         BufferedImage image = noise(16, 16, 2);
         byte[] message = new byte[] {1};
         assertThrows(IllegalArgumentException.class,
-                () -> operations.embed(image, message, "k", false, null, "nope", "aes"));
+                () -> LegacyEmbed.embed(image, message, "k", false, null, "nope", "aes"));
         assertThrows(IllegalArgumentException.class,
-                () -> operations.embed(image, message, "k", true, "k", "zhang-tang", "rot13"));
+                () -> LegacyEmbed.embed(image, message, "k", true, "k", "zhang-tang", "rot13"));
         assertThrows(IllegalArgumentException.class,
-                () -> operations.embed(image, message, null, false, null, "zhang-tang", "aes"));
+                () -> LegacyEmbed.embed(image, message, null, false, null, "zhang-tang", "aes"));
         assertThrows(IllegalArgumentException.class,
-                () -> operations.embed(image, message, "k", true, null, "zhang-tang", "aes"));
+                () -> LegacyEmbed.embed(image, message, "k", true, null, "zhang-tang", "aes"));
     }
 
     @Test
     void blankStegoKeyRoundTrips() throws Exception {
         BufferedImage cover = noise(40, 40, 11);
         byte[] message = "public-walk".getBytes(StandardCharsets.UTF_8);
-        StegoOperations.EmbedResult stego = operations.embed(cover, message, "", false, null, "zhang-tang", "aes");
+        StegoOperations.EmbedResult stego = LegacyEmbed.embed(cover, message, "", false, null, "zhang-tang", "aes");
         assertArrayEquals(message, operations.extract(stego.image(), "", false, null, "zhang-tang", "aes"));
         assertThrows(CorruptOrInvalidStegoImageException.class,
                 () -> operations.extract(stego.image(), "other", false, null, "zhang-tang", "aes"));
@@ -124,7 +124,7 @@ class StegoOperationsTest {
     void distinctStegoAndEncryptKeysRoundTrip() throws Exception {
         BufferedImage cover = noise(64, 64, 12);
         byte[] message = "split-keys".getBytes(StandardCharsets.UTF_8);
-        StegoOperations.EmbedResult stego = operations.embed(
+        StegoOperations.EmbedResult stego = LegacyEmbed.embed(
                 cover, message, "walk", true, "cipher", "zhang-tang", "aes");
 
         assertArrayEquals(message, operations.extract(stego.image(), "walk", true, "cipher", "zhang-tang", "aes"));
@@ -142,7 +142,7 @@ class StegoOperationsTest {
     void emptyEncryptKeyIsAValidAeadPath() throws Exception {
         BufferedImage cover = noise(64, 64, 13);
         byte[] message = "blank-cipher".getBytes(StandardCharsets.UTF_8);
-        StegoOperations.EmbedResult stego = operations.embed(
+        StegoOperations.EmbedResult stego = LegacyEmbed.embed(
                 cover, message, "walk", true, "", "zhang-tang", "aes");
         assertArrayEquals(message, operations.extract(stego.image(), "walk", true, "", "zhang-tang", "aes"));
         assertThrows(EncryptionException.class,
@@ -153,7 +153,7 @@ class StegoOperationsTest {
     void whitespaceOnlyKeyStillRoundTrips() throws Exception {
         BufferedImage cover = noise(32, 32, 8);
         byte[] message = "kept".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        StegoOperations.EmbedResult stego = operations.embed(cover, message, "  ", false, null, "zhang-tang", "aes");
+        StegoOperations.EmbedResult stego = LegacyEmbed.embed(cover, message, "  ", false, null, "zhang-tang", "aes");
         assertArrayEquals(message, operations.extract(stego.image(), "  ", false, null, "zhang-tang", "aes"));
     }
 

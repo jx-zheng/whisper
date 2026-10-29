@@ -96,14 +96,14 @@ class HillStcTest {
         seed[1] = 4;
         HillStcScheme scheme = new HillStcScheme();
         EmbedOptions options = new EmbedOptions("", RatePreset.STANDARD, false, "png");
-        Carrier stego = scheme.embed(Carrier.raster(photo, null, "png"), payload, seed, options, null);
+        Carrier stego = scheme.embed(Carrier.raster(photo, null, "png"), payload, seed, options);
         assertArrayEquals(payload, scheme.extract(stego, seed, options));
         assertEquals("png", stego.format());
         assertTrue(stego.encoded()[0] == (byte) 0x89);
 
         RasterImage bmp = BmpCodec.read(resource("fixtures/bmp/sample.bmp"));
         EmbedOptions bmpOut = new EmbedOptions("", RatePreset.STANDARD, false, "bmp");
-        Carrier hidden = scheme.embed(Carrier.raster(bmp, null, "bmp"), payload, seed, bmpOut, null);
+        Carrier hidden = scheme.embed(Carrier.raster(bmp, null, "bmp"), payload, seed, bmpOut);
         assertEquals("bmp", hidden.format());
         assertArrayEquals(payload, scheme.extract(hidden, seed, bmpOut));
         assertEquals('B', hidden.encoded()[0]);
@@ -117,7 +117,7 @@ class HillStcTest {
         HillStcScheme scheme = new HillStcScheme();
         EmbedOptions options = new EmbedOptions("", RatePreset.STANDARD, false, "png");
         assertThrows(MessageTooLongException.class,
-                () -> scheme.embed(Carrier.raster(photo, null, "png"), payload, seed, options, null));
+                () -> scheme.embed(Carrier.raster(photo, null, "png"), payload, seed, options));
     }
 
     @Test
@@ -140,7 +140,7 @@ class HillStcTest {
         HillStcScheme scheme = new HillStcScheme();
         EmbedOptions options = new EmbedOptions("", RatePreset.STANDARD, false, "png");
         long start = System.nanoTime();
-        Carrier stego = scheme.embed(Carrier.raster(image, null, "png"), payload, seed, options, null);
+        Carrier stego = scheme.embed(Carrier.raster(image, null, "png"), payload, seed, options);
         double seconds = (System.nanoTime() - start) / 1_000_000_000.0;
         System.out.println("12MP hill-stc hide incl. self-check, excl. KDF: " + seconds + " s (spec target 6 s)");
         assertArrayEquals(payload, scheme.extract(stego, seed, options));

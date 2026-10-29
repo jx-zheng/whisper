@@ -61,7 +61,11 @@ public final class CoverConverter {
             ImageReader reader = readers.next();
             try {
                 reader.setInput(in);
-                Raster raster = reader.readRaster(0, null);
+                BufferedImage decoded = reader.read(0);
+                if (decoded == null) {
+                    throw new IOException("Could not convert this cover to an 8-bit PNG");
+                }
+                Raster raster = decoded.getRaster();
                 int width = raster.getWidth();
                 int height = raster.getHeight();
                 int bands = raster.getNumBands();
@@ -93,6 +97,10 @@ public final class CoverConverter {
     private static int highByte(int sample, int bits) {
         if (bits > 8) {
             return (sample >> (bits - 8)) & 0xff;
+        }
+        if (bits < 8) {
+            int max = (1 << bits) - 1;
+            return max == 0 ? 0 : sample * 255 / max;
         }
         return sample & 0xff;
     }

@@ -342,10 +342,12 @@ public class CliDriver {
         suite(cl, false);
         char[] stego = stegoKey(cl).toCharArray();
         char[] enc = cl.hasOption("encrypt-key") ? cl.getOptionValue("encrypt-key").toCharArray() : null;
-        boolean legacyEmpty = enc == null && cl.hasOption("encrypt");
+        boolean legacyAes = isLegacyAes(cl);
+        boolean legacyEmpty = enc == null && (cl.hasOption("encrypt") || legacyAes);
         boolean split = enc != null;
         PayloadOps.Outcome outcome = new PayloadOps().reveal(
-                input, stego, enc, split, kdf(cl), cl.getOptionValue("scheme", "auto"), legacyEmpty);
+                input, stego, enc, split, kdf(cl), cl.getOptionValue("scheme", "auto"), legacyEmpty,
+                " If the sender used --kdf high, rerun with --kdf high.");
         System.err.println(outcome.message());
         if (!outcome.ok()) {
             return outcome.exitCode();
@@ -370,6 +372,15 @@ public class CliDriver {
             throw new IllegalArgumentException("Pass --out-dir or -o to save this " + outcome.kind() + " payload");
         }
         return 0;
+    }
+
+    private static boolean isLegacyAes(CommandLine cl) {
+        String cipher = cl.getOptionValue("cipher");
+        if (cipher == null) {
+            return false;
+        }
+        String id = cipher.toLowerCase(Locale.ROOT).trim();
+        return "aes".equals(id) || "aes-128-gcm".equals(id);
     }
 
     private static Envelope.SuiteKind suite(CommandLine cl, boolean embed) {
