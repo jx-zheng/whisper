@@ -64,6 +64,8 @@ final class EmbedPane extends BorderPane {
 
     /** Last output path this pane filled in from the cover name. A typed path is left alone. */
     private String suggestedOutput = "";
+    /** Output path the save dialog already accepted, so embed does not ask again. */
+    private String confirmedOutput = "";
 
     private Path usedOutput;
     private String usedKey = "";
@@ -232,6 +234,7 @@ final class EmbedPane extends BorderPane {
         Path path = Choosers.chooseSave(chooser, getScene() == null ? null : getScene().getWindow());
         if (path != null) {
             outputField.setText(path.toString());
+            confirmedOutput = path.toString();
         }
     }
 
@@ -285,9 +288,13 @@ final class EmbedPane extends BorderPane {
                 return;
             }
             loadedCover = "";
+            capacity = Integer.MIN_VALUE;
             coverPreview = null;
+            stegoPreview = null;
+            updateViewToggle();
             imageCard.clear(fileName(path));
             imageCard.setWarning(error.getMessage());
+            refreshSize();
             status.show(StatusBar.Level.ERROR, error.getMessage());
         });
     }
@@ -305,6 +312,12 @@ final class EmbedPane extends BorderPane {
 
     private void embed() {
         Path cover = pathFrom(coverField.getText());
+        if (cover != null) {
+            String current = outputField.getText() == null ? "" : outputField.getText().trim();
+            if (current.equals(suggestedOutput) && !cover.toString().equals(loadedCover)) {
+                suggestOutput(cover);
+            }
+        }
         Path output = pathFrom(outputField.getText());
         String key = passphrase.getText();
         boolean encrypt = encryptBox.isSelected();
@@ -334,9 +347,13 @@ final class EmbedPane extends BorderPane {
             status.show(StatusBar.Level.ERROR, "Stego output must be a different file from the cover.");
             return;
         }
-        if (Files.isRegularFile(output)
+        boolean justConfirmed = output.toString().equals(confirmedOutput);
+        if (Files.isRegularFile(output) && !justConfirmed
                 && !Choosers.confirmOverwrite(output, getScene() == null ? null : getScene().getWindow())) {
             return;
+        }
+        if (justConfirmed) {
+            confirmedOutput = "";
         }
 
         openExtractButton.setVisible(false);

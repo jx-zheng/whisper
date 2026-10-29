@@ -51,6 +51,25 @@ class CliDriverTest {
     }
 
     @Test
+    void whitespaceKeyRoundTrips(@TempDir Path dir) throws Exception {
+        Path cover = dir.resolve("cover.png");
+        Path stego = dir.resolve("stego.png");
+        ImageIO.write(noise(48, 48), "png", cover.toFile());
+
+        CliDriver driver = new CliDriver();
+        try (Capture ignored = Capture.of()) {
+            assertEquals(0, driver.run(new String[] {
+                    "embed", "-i", cover.toString(), "-o", stego.toString(),
+                    "-m", "spaces", "-k", "  "
+            }));
+            assertEquals(0, driver.run(new String[] {
+                    "extract", "-i", stego.toString(), "-k", "  ", "-o", dir.resolve("out.txt").toString()
+            }));
+        }
+        assertEquals("spaces", Files.readString(dir.resolve("out.txt")));
+    }
+
+    @Test
     void encryptedRoundTrip(@TempDir Path dir) throws Exception {
         Path cover = dir.resolve("cover.png");
         Path stego = dir.resolve("stego.png");

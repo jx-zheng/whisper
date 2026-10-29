@@ -84,7 +84,7 @@ public class CliDriver {
 
         Path inputPath = requiredPath(cl, "input-file");
         Path outputPath = requiredPath(cl, "output-file");
-        String key = requiredOption(cl, "key");
+        String key = requiredKey(cl);
         byte[] message = resolveMessageBytes(cl);
         boolean encrypt = cl.hasOption("encrypt");
 
@@ -115,7 +115,7 @@ public class CliDriver {
         }
 
         Path inputPath = requiredPath(cl, "input-file");
-        String key = requiredOption(cl, "key");
+        String key = requiredKey(cl);
         boolean decrypt = cl.hasOption("encrypt");
 
         BufferedImage stego = StegoOperations.readImage(inputPath);
@@ -188,6 +188,15 @@ public class CliDriver {
         String value = cl.getOptionValue(option);
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("Missing required option: --" + option);
+        }
+        return value;
+    }
+
+    /** Spaces are a real passphrase. Only a missing or empty {@code -k} is rejected. */
+    private static String requiredKey(CommandLine cl) {
+        String value = cl.getOptionValue("key");
+        if (value == null || value.isEmpty()) {
+            throw new IllegalArgumentException("Missing required option: --key");
         }
         return value;
     }
