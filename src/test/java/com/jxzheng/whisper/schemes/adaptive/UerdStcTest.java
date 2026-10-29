@@ -54,7 +54,7 @@ class UerdStcTest {
     void fiftyPayloadsRoundTripAndOnlySafeCoefficientsChange() throws Exception {
         Random random = new Random(11);
         UerdStcScheme scheme = new UerdStcScheme();
-        EmbedOptions options = new EmbedOptions("", RatePreset.STANDARD, true, "jpg");
+        EmbedOptions options = new EmbedOptions(RatePreset.STANDARD, true, "jpg");
         byte[] seed = new byte[32];
         seed[2] = 9;
         for (String name : List.of("fixtures/jpeg/noise.jpg", "fixtures/jpeg/photo-qf75.jpg")) {

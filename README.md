@@ -49,7 +49,7 @@ A JPEG's room depends on how many nonzero AC coefficients it has, not on its pix
 
 ## What you can hide
 
-- **Text.** UTF-8. `--message` / `-m`, or `--text-file`. `--message-file` is the same as `--text-file`.
+- **Text.** UTF-8. `--message` / `-m`, or `-f` / `--message-file`.
 - **File.** Any bytes. `--file report.pdf`. The sanitized base name is stored so Extract can suggest it.
 - **Image.** `--image secret.png`. If it does not fit, `--fit-quality 75 --fit-max-edge 1024` re-encodes a smaller JPEG copy of the *hidden* image. The cover is not re-encoded.
 

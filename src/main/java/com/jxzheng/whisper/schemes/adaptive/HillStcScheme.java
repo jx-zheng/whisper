@@ -45,8 +45,17 @@ public final class HillStcScheme implements StegoScheme {
                     "Envelope is " + payload.length + " bytes but this cover holds " + (budget + 58)
                             + " bytes at this preset (about " + budget + " bytes of content).");
         }
-        ParityFraming.Embedded embedded = ParityFraming.embed(
-                samples, costs, payload, visitSeed, 10, rate, 0, 255, false);
+        ParityFraming.Embedded embedded;
+        try {
+            embedded = ParityFraming.embed(samples, costs, payload, visitSeed, 10, rate, 0, 255, false);
+        } catch (IllegalArgumentException ex) {
+            if (ex.getMessage() != null && ex.getMessage().contains("no embedding path")) {
+                throw new MessageTooLongException(
+                        "Envelope is " + payload.length + " bytes but this cover has no embedding path at this preset (about "
+                                + budget + " bytes of content).");
+            }
+            throw ex;
+        }
         writePlane(image, embedded.samples());
         pixels = null;
         samples = null;

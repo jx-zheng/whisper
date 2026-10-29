@@ -215,7 +215,7 @@ public class CliDriver {
         options.addOption(Option.builder("m").longOpt("message").hasArg().argName("text")
                 .desc("Message to embed (embed only)").build());
         options.addOption(Option.builder("f").longOpt("message-file").hasArg().argName("file")
-                .desc("Read message to embed from a file (embed only)").build());
+                .desc("Read a UTF-8 message to embed from a file").build());
         options.addOption(Option.builder("s").longOpt("scheme").hasArg().argName("name")
                 .desc("Steganography scheme (default: auto)").build());
         options.addOption(Option.builder("c").longOpt("cipher").hasArg().argName("name")
@@ -232,8 +232,6 @@ public class CliDriver {
                 .desc("Separate encryption passphrase. Omitted means the stego passphrase is also the AEAD key. "
                         + "Required to decrypt legacy AES-128 payloads. The flag name is encrypt-key.").build());
         options.addOption(Option.builder("h").longOpt("help").desc("Show usage information").build());
-        options.addOption(Option.builder().longOpt("text-file").hasArg().argName("file")
-                .desc("UTF-8 text file to hide").build());
         options.addOption(Option.builder().longOpt("file").hasArg().argName("file")
                 .desc("Any file to hide").build());
         options.addOption(Option.builder().longOpt("image").hasArg().argName("file")
@@ -306,9 +304,8 @@ public class CliDriver {
             kind = PayloadKind.FILE;
             name = file.getFileName().toString();
             mime = "application/octet-stream";
-        } else if (cl.hasOption("text-file") || cl.hasOption("message-file")) {
-            String flag = cl.hasOption("text-file") ? "text-file" : "message-file";
-            content = Files.readString(Path.of(cl.getOptionValue(flag))).getBytes(StandardCharsets.UTF_8);
+        } else if (cl.hasOption("message-file")) {
+            content = Files.readString(Path.of(cl.getOptionValue("message-file"))).getBytes(StandardCharsets.UTF_8);
             kind = PayloadKind.TEXT;
             mime = "text/plain";
         } else if (cl.hasOption("message")) {
@@ -316,7 +313,7 @@ public class CliDriver {
             kind = PayloadKind.TEXT;
             mime = "text/plain";
         } else {
-            throw new IllegalArgumentException("Pass --message, --text-file, --file, or --image");
+            throw new IllegalArgumentException("Pass --message, --message-file, --file, or --image");
         }
         char[] stego = stegoKey(cl).toCharArray();
         char[] enc = cl.hasOption("encrypt-key") ? cl.getOptionValue("encrypt-key").toCharArray() : null;

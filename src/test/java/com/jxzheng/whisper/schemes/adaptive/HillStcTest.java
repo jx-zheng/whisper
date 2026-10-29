@@ -95,14 +95,14 @@ class HillStcTest {
         byte[] seed = new byte[32];
         seed[1] = 4;
         HillStcScheme scheme = new HillStcScheme();
-        EmbedOptions options = new EmbedOptions("", RatePreset.STANDARD, false, "png");
+        EmbedOptions options = new EmbedOptions(RatePreset.STANDARD, false, "png");
         Carrier stego = scheme.embed(Carrier.raster(photo, null, "png"), payload, seed, options);
         assertArrayEquals(payload, scheme.extract(stego, seed, options));
         assertEquals("png", stego.format());
         assertTrue(stego.encoded()[0] == (byte) 0x89);
 
         RasterImage bmp = BmpCodec.read(resource("fixtures/bmp/sample.bmp"));
-        EmbedOptions bmpOut = new EmbedOptions("", RatePreset.STANDARD, false, "bmp");
+        EmbedOptions bmpOut = new EmbedOptions(RatePreset.STANDARD, false, "bmp");
         Carrier hidden = scheme.embed(Carrier.raster(bmp, null, "bmp"), payload, seed, bmpOut);
         assertEquals("bmp", hidden.format());
         assertArrayEquals(payload, scheme.extract(hidden, seed, bmpOut));
@@ -115,7 +115,7 @@ class HillStcTest {
         byte[] payload = new byte[200];
         byte[] seed = new byte[32];
         HillStcScheme scheme = new HillStcScheme();
-        EmbedOptions options = new EmbedOptions("", RatePreset.STANDARD, false, "png");
+        EmbedOptions options = new EmbedOptions(RatePreset.STANDARD, false, "png");
         assertThrows(MessageTooLongException.class,
                 () -> scheme.embed(Carrier.raster(photo, null, "png"), payload, seed, options));
     }
@@ -138,7 +138,7 @@ class HillStcTest {
         byte[] seed = new byte[32];
         seed[0] = 1;
         HillStcScheme scheme = new HillStcScheme();
-        EmbedOptions options = new EmbedOptions("", RatePreset.STANDARD, false, "png");
+        EmbedOptions options = new EmbedOptions(RatePreset.STANDARD, false, "png");
         long start = System.nanoTime();
         Carrier stego = scheme.embed(Carrier.raster(image, null, "png"), payload, seed, options);
         double seconds = (System.nanoTime() - start) / 1_000_000_000.0;

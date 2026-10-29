@@ -15,14 +15,14 @@ class LegacyFixtureTest {
     @Test
     void plainZhangTangFixtureExtracts() throws Exception {
         var image = StegoOperations.readImage(fixture("fixtures/legacy/zhang-tang-plain.png"));
-        byte[] message = new StegoOperations().extract(image, "legacy-stego-key", false, null, "zhang-tang", "aes");
+        byte[] message = LegacyEmbed.extract(image, "legacy-stego-key", false, null, "zhang-tang", "aes");
         assertEquals("legacy-plain-v0.9", new String(message, StandardCharsets.UTF_8));
     }
 
     @Test
     void encryptedZhangTangFixtureExtracts() throws Exception {
         var image = StegoOperations.readImage(fixture("fixtures/legacy/zhang-tang-aes.png"));
-        byte[] message = new StegoOperations().extract(
+        byte[] message = LegacyEmbed.extract(
                 image, "legacy-stego-key", true, "legacy-enc-key", "zhang-tang", "aes");
         assertEquals("legacy-encrypted-v0.9", new String(message, StandardCharsets.UTF_8));
     }

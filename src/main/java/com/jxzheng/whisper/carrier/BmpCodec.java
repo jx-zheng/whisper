@@ -56,11 +56,11 @@ public final class BmpCodec {
 
     public static byte[] write(RasterImage image) {
         int spp = image.spp();
-        if (spp != 3 && spp != 4) {
-            throw new IllegalArgumentException("bmp: need RGB or RGBA samples");
+        if (spp != 1 && spp != 2 && spp != 3 && spp != 4) {
+            throw new IllegalArgumentException("bmp: need grey or RGB samples");
         }
-        int bits = spp == 3 ? 24 : 32;
-        int rowBytes = ((image.width * (bits / 8) + 3) / 4) * 4;
+        int bits = 24;
+        int rowBytes = ((image.width * 3 + 3) / 4) * 4;
         int pixelOffset = 54;
         int size = pixelOffset + rowBytes * image.height;
         byte[] out = new byte[size];
@@ -78,13 +78,20 @@ public final class BmpCodec {
             int dst = pixelOffset + (image.height - 1 - y) * rowBytes;
             for (int x = 0; x < image.width; x++) {
                 int s = src + x * spp;
-                int d = dst + x * (bits / 8);
-                out[d] = image.samples[s + 2];
-                out[d + 1] = image.samples[s + 1];
-                out[d + 2] = image.samples[s];
-                if (spp == 4) {
-                    out[d + 3] = image.samples[s + 3];
+                int d = dst + x * 3;
+                int red;
+                int green;
+                int blue;
+                if (spp <= 2) {
+                    red = green = blue = image.samples[s] & 0xff;
+                } else {
+                    red = image.samples[s] & 0xff;
+                    green = image.samples[s + 1] & 0xff;
+                    blue = image.samples[s + 2] & 0xff;
                 }
+                out[d] = (byte) blue;
+                out[d + 1] = (byte) green;
+                out[d + 2] = (byte) red;
             }
         }
         return out;

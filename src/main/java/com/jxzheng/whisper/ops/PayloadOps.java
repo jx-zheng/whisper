@@ -148,9 +148,7 @@ public final class PayloadOps {
             throws Exception {
         String outExt = com.jxzheng.whisper.media.ImageFormats.extensionOf(request.output());
         String outputFormat = outputFormat(scheme, outExt);
-        EmbedOptions options = new EmbedOptions(
-                new String(request.stegoPass() == null ? new char[0] : request.stegoPass()),
-                request.preset(), request.keepMetadata(), outputFormat);
+        EmbedOptions options = new EmbedOptions(request.preset(), request.keepMetadata(), outputFormat);
         return switch (scheme) {
             case "hill-stc" -> {
                 RasterImage image = "bmp".equals(format) ? BmpCodec.read(cover) : pngOrConvert(cover);
@@ -367,15 +365,27 @@ public final class PayloadOps {
     }
 
     private static RasterImage pngOrConvert(byte[] cover) throws Exception {
-        try {
-            return PngCodec.decode(cover);
-        } catch (IllegalArgumentException ex) {
-            String message = ex.getMessage() == null ? "" : ex.getMessage();
-            if (message.contains("paletted") || message.contains("interlaced") || message.contains("bit depth")) {
-                return PngCodec.decode(CoverConverter.toEightBitPng(cover));
-            }
-            throw ex;
+        if (needsRasterConversion(cover)) {
+            return PngCodec.decode(CoverConverter.toEightBitPng(cover));
         }
+        return PngCodec.decode(cover);
+    }
+
+    /** Indexed, interlaced, and non-8-bit PNGs are rewritten before HILL. */
+    static boolean needsRasterConversion(byte[] file) {
+        if (file == null || file.length < 29 || file[0] != (byte) 0x89 || file[1] != 'P') {
+            return false;
+        }
+        if (file[12] != 'I' || file[13] != 'H' || file[14] != 'D' || file[15] != 'R') {
+            return false;
+        }
+        int depth = file[24] & 0xff;
+        int color = file[25] & 0xff;
+        int interlace = file[28] & 0xff;
+        if (interlace != 0 || depth != 8 || color == 3) {
+            return true;
+        }
+        return color != 0 && color != 2 && color != 4 && color != 6;
     }
 
     private static PayloadKind sniffKind(byte[] bytes) {

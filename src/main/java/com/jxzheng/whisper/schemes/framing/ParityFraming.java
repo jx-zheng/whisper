@@ -80,7 +80,7 @@ public final class ParityFraming {
         byte[] pub = publicMaterial(payload);
         int[] saltSamples = gather(samples, layout.saltIndex());
         float[] saltCosts = gatherFloat(costs, layout.saltIndex());
-        int[] codedSalt = embedFixed(saltSamples, saltCosts, pub, height, min, max, shrink);
+        int[] codedSalt = embedFixed(saltSamples, saltCosts, pub, height, min, max, shrink, seed);
         int[] restSamples = gather(samples, layout.restIndex());
         float[] restCosts = gatherFloat(costs, layout.restIndex());
         int[] codedRest = embedPermuted(restSamples, restCosts, payload, seed, height, min, max, shrink);
@@ -151,11 +151,12 @@ public final class ParityFraming {
         return out;
     }
 
-    private static int[] embedFixed(int[] samples, float[] costs, byte[] message, int height, int min, int max, boolean shrink) {
+    private static int[] embedFixed(
+            int[] samples, float[] costs, byte[] message, int height, int min, int max, boolean shrink, byte[] key) {
         byte[] bits = parities(samples);
         byte[] coded = new byte[bits.length];
         Stc.embed(bits, costs, message, height, coded);
-        return apply(samples, bits, coded, min, max, shrink);
+        return apply(samples, bits, coded, min, max, shrink, key);
     }
 
     private static byte[] extractFixed(int[] samples, int height) {
@@ -177,7 +178,7 @@ public final class ParityFraming {
             if (coded[j] == bits[j]) {
                 continue;
             }
-            out[perm[j]] = flip(samples[perm[j]], coded[j], min, max, shrink);
+            out[perm[j]] = flip(samples[perm[j]], coded[j], min, max, shrink, j, seed);
         }
         return out;
     }
@@ -245,17 +246,17 @@ public final class ParityFraming {
         return Stc.extract(Arrays.copyOfRange(bits, HEADER_SPAN, HEADER_SPAN + used), n, height);
     }
 
-    private static int[] apply(int[] samples, byte[] before, byte[] after, int min, int max, boolean shrink) {
+    private static int[] apply(int[] samples, byte[] before, byte[] after, int min, int max, boolean shrink, byte[] key) {
         int[] out = samples.clone();
         for (int i = 0; i < samples.length; i++) {
             if (after[i] != before[i]) {
-                out[i] = flip(samples[i], after[i], min, max, shrink);
+                out[i] = flip(samples[i], after[i], min, max, shrink, i, key);
             }
         }
         return out;
     }
 
-    static int flip(int value, int want, int min, int max, boolean shrink) {
+    static int flip(int value, int want, int min, int max, boolean shrink, int index, byte[] key) {
         if ((value & 1) == (want & 1)) {
             return value;
         }
@@ -271,6 +272,14 @@ public final class ParityFraming {
             if (value == 0 && plus) {
                 return 1;
             }
+        } else {
+            int bit = directionBit(index, value, key);
+            if (bit == 0 && plus) {
+                return value + 1;
+            }
+            if (bit == 1 && minus) {
+                return value - 1;
+            }
         }
         if (plus) {
             return value + 1;
@@ -279,6 +288,14 @@ public final class ParityFraming {
             return value - 1;
         }
         throw new IllegalArgumentException("sample cannot move by 1");
+    }
+
+    private static int directionBit(int index, int value, byte[] key) {
+        int mixed = value ^ index;
+        if (key != null && key.length > 0) {
+            mixed ^= key[index % key.length] & 0xff;
+        }
+        return mixed & 1;
     }
 
     private static byte[] parities(int[] samples) {
