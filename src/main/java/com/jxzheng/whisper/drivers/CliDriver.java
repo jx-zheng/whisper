@@ -18,6 +18,7 @@ import org.apache.commons.cli.ParseException;
 
 import com.jxzheng.whisper.analysis.ChiSquareAnalyzer;
 import com.jxzheng.whisper.analysis.RsAnalyzer;
+import com.jxzheng.whisper.carrier.JpegCoefficients;
 import com.jxzheng.whisper.crypto.CipherRegistry;
 import com.jxzheng.whisper.crypto.Envelope;
 import com.jxzheng.whisper.crypto.KdfProfile;
@@ -81,8 +82,13 @@ public class CliDriver {
             printHelp();
             return 1;
         } catch (OutOfMemoryError e) {
-            System.err.println(
-                    "Out of memory. If you passed --kdf high, that profile needs about 2 GiB of RAM. Use --kdf default.");
+            if ("extract".equals(command)) {
+                System.err.println("Out of memory. The sender used the high Argon2id profile. "
+                        + "Rerun with more heap, for example JAVA_TOOL_OPTIONS=-Xmx3g.");
+            } else {
+                System.err.println(
+                        "Out of memory. The high Argon2id profile needs about 2 GiB of RAM. Use --kdf default.");
+            }
             return 1;
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
@@ -251,6 +257,12 @@ public class CliDriver {
         String resolved = SchemeRegistry.canonical(scheme, sniffFormat(input));
         if ("zhang-tang".equals(resolved)) {
             throw new IllegalArgumentException("Zhang–Tang is decrypt-only. New embeds use hill-stc or uerd-stc.");
+        }
+        if (!cl.hasOption("keep-metadata") && "jpeg".equals(sniffFormat(input))) {
+            String turned = JpegCoefficients.orientationWarning(Files.readAllBytes(input));
+            if (turned != null) {
+                System.err.println(turned);
+            }
         }
         String ext = ImageFormats.extensionOf(output);
         if ("uerd-stc".equals(resolved)) {

@@ -37,7 +37,7 @@ public final class KeyCache implements AutoCloseable {
             if (hit != null) {
                 return hit.clone();
             }
-            byte[] derived = kdf.derive(pass == null ? new char[0] : pass, salt16, profile);
+            byte[] derived = kdf.deriveReveal(pass == null ? new char[0] : pass, salt16, profile);
             masters.put(id, derived);
             return derived.clone();
         } finally {

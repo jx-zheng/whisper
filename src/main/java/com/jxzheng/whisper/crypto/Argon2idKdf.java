@@ -16,6 +16,15 @@ public final class Argon2idKdf implements PasswordKdf {
 
     @Override
     public byte[] derive(char[] pass, byte[] salt16, KdfProfile profile) {
+        return derive(pass, salt16, profile, false);
+    }
+
+    /** Reveal of a high-profile envelope needs a larger heap, not a different profile flag. */
+    public byte[] deriveReveal(char[] pass, byte[] salt16, KdfProfile profile) {
+        return derive(pass, salt16, profile, true);
+    }
+
+    private byte[] derive(char[] pass, byte[] salt16, KdfProfile profile, boolean reveal) {
         if (salt16 == null || salt16.length != 16) {
             throw new IllegalArgumentException("Argon2id salt must be 16 bytes");
         }
@@ -26,8 +35,10 @@ public final class Argon2idKdf implements PasswordKdf {
         try {
             return deriveBytes(password, salt16, null, null, profile.iterations(), profile.memoryKiB(), profile.lanes());
         } catch (OutOfMemoryError e) {
-            throw new IllegalArgumentException(
-                    "Out of memory. The high Argon2id profile needs about 2 GiB of RAM. Use --kdf default.", e);
+            String message = reveal
+                    ? "Out of memory. The sender used the high Argon2id profile. Rerun with more heap, for example JAVA_TOOL_OPTIONS=-Xmx3g."
+                    : "Out of memory. The high Argon2id profile needs about 2 GiB of RAM. Use --kdf default.";
+            throw new IllegalArgumentException(message, e);
         } finally {
             Secrets.wipe(password);
         }

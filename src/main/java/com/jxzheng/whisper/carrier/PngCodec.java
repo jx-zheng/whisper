@@ -331,7 +331,7 @@ public final class PngCodec {
 
     private static boolean keep(String type, boolean metadata) {
         boolean safe = switch (type) {
-            case "gAMA", "sRGB", "cHRM", "pHYs", "iCCP", "sBIT" -> true;
+            case "gAMA", "sRGB", "cHRM", "pHYs", "iCCP", "sBIT", "tRNS" -> true;
             default -> false;
         };
         if (safe) {

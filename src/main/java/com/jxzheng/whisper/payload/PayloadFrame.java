@@ -48,6 +48,10 @@ public final class PayloadFrame {
             safeName = NameSanitizer.sanitize(safeName, safeMime);
             nameBytes = safeName.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         }
+        if (reencoded) {
+            safeName = jpgName(safeName);
+            nameBytes = safeName.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        }
         byte[] mimeBytes = safeMime.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
         byte[] digest = sha256(content);
         int flags = 0;
@@ -140,6 +144,22 @@ public final class PayloadFrame {
         String safeMime = NameSanitizer.mime(mime);
         String safeName = kind == PayloadKind.TEXT ? "" : NameSanitizer.sanitize(rawName, safeMime);
         return new Parsed(kind, safeName, safeMime, content, actual, (flags & 0x02) != 0);
+    }
+
+    private static String jpgName(String name) {
+        String base = name == null ? "" : name;
+        int dot = base.lastIndexOf('.');
+        if (dot > 0) {
+            base = base.substring(0, dot);
+        }
+        if (base.isEmpty()) {
+            base = "whisper-payload";
+        }
+        String jpg = base + ".jpg";
+        if (jpg.getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= MAX_NAME) {
+            return jpg;
+        }
+        return NameSanitizer.sanitize("whisper-payload.jpg", "image/jpeg");
     }
 
     private static long EnvelopeCap() {

@@ -8,4 +8,9 @@ public interface PasswordKdf {
 
     /** 32-byte secret. The caller wipes it. */
     byte[] derive(char[] pass, byte[] salt16, KdfProfile profile);
+
+    /** Same as {@link #derive}, with the reveal out-of-memory wording. */
+    default byte[] deriveReveal(char[] pass, byte[] salt16, KdfProfile profile) {
+        return derive(pass, salt16, profile);
+    }
 }

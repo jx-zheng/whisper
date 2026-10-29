@@ -11,7 +11,6 @@ public final class KeySchedule {
     public static final String INFO_STEGO = "whisper v2 stego";
     public static final String INFO_AEAD = "whisper v2 aead";
     public static final String INFO_PAYLOAD = "whisper v2 payload";
-    public static final String INFO_MAC = "whisper v2 mac";
     static final byte[] ENC_SALT_LABEL = "whisper v2 enc salt".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
 
     private final PasswordKdf kdf;
@@ -60,9 +59,8 @@ public final class KeySchedule {
             byte[] visit = Hkdf.expand(stegoMaster, null, INFO_STEGO, 32);
             byte[] aead = Hkdf.expand(encMaster, null, INFO_AEAD, 32);
             byte[] payload = Hkdf.expand(aead, fileNonce, INFO_PAYLOAD, 32);
-            byte[] mac = Hkdf.expand(encMaster, fileNonce, INFO_MAC, 32);
             Secrets.wipe(aead);
-            return new Derived(visit, payload, mac, stegoMaster);
+            return new Derived(visit, payload, stegoMaster);
         } catch (RuntimeException e) {
             Secrets.wipe(stegoMaster);
             throw e;
@@ -88,17 +86,15 @@ public final class KeySchedule {
         }
     }
 
-    /** Visit seed, payload key, and MAC key. Close wipes them. */
+    /** Visit seed and payload key. Close wipes them. */
     public static final class Derived implements AutoCloseable {
         private final byte[] visitSeed;
         private final byte[] payloadKey;
-        private final byte[] macKey;
         private final byte[] stegoMaster;
 
-        Derived(byte[] visitSeed, byte[] payloadKey, byte[] macKey, byte[] stegoMaster) {
+        Derived(byte[] visitSeed, byte[] payloadKey, byte[] stegoMaster) {
             this.visitSeed = visitSeed;
             this.payloadKey = payloadKey;
-            this.macKey = macKey;
             this.stegoMaster = stegoMaster;
         }
 
@@ -110,10 +106,6 @@ public final class KeySchedule {
             return payloadKey;
         }
 
-        public byte[] macKey() {
-            return macKey;
-        }
-
         public byte[] stegoMaster() {
             return stegoMaster;
         }
@@ -122,7 +114,6 @@ public final class KeySchedule {
         public void close() {
             Secrets.wipe(visitSeed);
             Secrets.wipe(payloadKey);
-            Secrets.wipe(macKey);
             Secrets.wipe(stegoMaster);
         }
     }

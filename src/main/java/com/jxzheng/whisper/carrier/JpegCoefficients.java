@@ -130,6 +130,111 @@ public final class JpegCoefficients {
         return planes.get(index);
     }
 
+    public static final String ORIENTATION_WARNING =
+            "Warning: this cover's EXIF orientation is not 1, and that tag is not copied. "
+                    + "The stego image may display rotated compared with the cover.";
+
+    /** TIFF Orientation tag, or 1 when the file has no EXIF orientation. */
+    public static int exifOrientation(byte[] file) {
+        if (file == null || file.length < 4 || (file[0] & 0xff) != 0xff || (file[1] & 0xff) != 0xd8) {
+            return 1;
+        }
+        int i = 2;
+        while (i + 4 < file.length) {
+            if ((file[i] & 0xff) != 0xff) {
+                return 1;
+            }
+            while (i < file.length && (file[i] & 0xff) == 0xff) {
+                i++;
+            }
+            if (i >= file.length) {
+                return 1;
+            }
+            int marker = file[i++] & 0xff;
+            if (marker == 0xD9 || marker == 0xDA) {
+                return 1;
+            }
+            if (marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7)) {
+                continue;
+            }
+            if (i + 2 > file.length) {
+                return 1;
+            }
+            int len = ((file[i] & 0xff) << 8) | (file[i + 1] & 0xff);
+            if (len < 2 || i + len > file.length) {
+                return 1;
+            }
+            if (marker == 0xE1) {
+                int value = orientationInApp1(file, i + 2, len - 2);
+                if (value > 1) {
+                    return value;
+                }
+            }
+            i += len;
+        }
+        return 1;
+    }
+
+    public static String orientationWarning(byte[] jpeg) {
+        return exifOrientation(jpeg) > 1 ? ORIENTATION_WARNING : null;
+    }
+
+    private static int orientationInApp1(byte[] file, int off, int len) {
+        if (len < 16 || off + 6 > file.length) {
+            return 1;
+        }
+        if (file[off] != 'E' || file[off + 1] != 'x' || file[off + 2] != 'i' || file[off + 3] != 'f'
+                || file[off + 4] != 0 || file[off + 5] != 0) {
+            return 1;
+        }
+        int tiff = off + 6;
+        int end = off + len;
+        if (tiff + 8 > end) {
+            return 1;
+        }
+        boolean le = file[tiff] == 'I' && file[tiff + 1] == 'I';
+        boolean be = file[tiff] == 'M' && file[tiff + 1] == 'M';
+        if (!le && !be) {
+            return 1;
+        }
+        if (u16(file, tiff + 2, le) != 42) {
+            return 1;
+        }
+        int ifd = tiff + u32(file, tiff + 4, le);
+        if (ifd < tiff || ifd + 2 > end) {
+            return 1;
+        }
+        int count = u16(file, ifd, le);
+        int entry = ifd + 2;
+        for (int n = 0; n < count; n++) {
+            if (entry + 12 > end) {
+                return 1;
+            }
+            int tag = u16(file, entry, le);
+            int type = u16(file, entry + 2, le);
+            int nvals = u32(file, entry + 4, le);
+            if (tag == 0x0112 && type == 3 && nvals == 1) {
+                return u16(file, entry + 8, le);
+            }
+            entry += 12;
+        }
+        return 1;
+    }
+
+    private static int u16(byte[] file, int at, boolean le) {
+        int a = file[at] & 0xff;
+        int b = file[at + 1] & 0xff;
+        return le ? (b << 8) | a : (a << 8) | b;
+    }
+
+    private static int u32(byte[] file, int at, boolean le) {
+        int a = file[at] & 0xff;
+        int b = file[at + 1] & 0xff;
+        int c = file[at + 2] & 0xff;
+        int d = file[at + 3] & 0xff;
+        return le ? (d << 24) | (c << 16) | (b << 8) | a : (a << 24) | (b << 16) | (c << 8) | d;
+    }
+
     public int nzac() {
         if (planes.isEmpty()) {
             return 0;

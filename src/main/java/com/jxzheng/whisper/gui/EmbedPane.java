@@ -321,16 +321,15 @@ final class EmbedPane extends BorderPane {
             BufferedImage image = covers.load(path);
             int nzac = -1;
             String ext = ImageFormats.extensionOf(path);
+            String warning = ImageFormats.lossyInputWarning(path);
             if (ext.equals("jpg") || ext.equals("jpeg")) {
                 try {
-                    nzac = com.jxzheng.whisper.carrier.JpegCoefficients.parse(java.nio.file.Files.readAllBytes(path)).nzac();
+                    byte[] jpeg = java.nio.file.Files.readAllBytes(path);
+                    nzac = com.jxzheng.whisper.carrier.JpegCoefficients.parse(jpeg).nzac();
+                    warning = com.jxzheng.whisper.carrier.JpegCoefficients.orientationWarning(jpeg);
                 } catch (RuntimeException ignored) {
                     nzac = -1;
                 }
-            }
-            String warning = ImageFormats.lossyInputWarning(path);
-            if (nzac >= 0) {
-                warning = null;
             }
             return new CoverLoad(
                     FxImages.scale(image, FxImages.PREVIEW_EDGE),

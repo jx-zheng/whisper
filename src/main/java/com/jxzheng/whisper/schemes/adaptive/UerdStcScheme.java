@@ -1,17 +1,12 @@
 package com.jxzheng.whisper.schemes.adaptive;
 
 import java.util.Arrays;
-import java.util.Optional;
 
 import com.jxzheng.whisper.carrier.Carrier;
-import com.jxzheng.whisper.carrier.CarrierProbe;
 import com.jxzheng.whisper.carrier.JpegCoefficients;
 import com.jxzheng.whisper.exceptions.MessageTooLongException;
 import com.jxzheng.whisper.ops.Progress;
-import com.jxzheng.whisper.schemes.Capacity;
 import com.jxzheng.whisper.schemes.EmbedOptions;
-import com.jxzheng.whisper.schemes.RatePreset;
-import com.jxzheng.whisper.schemes.SchemeInfo;
 import com.jxzheng.whisper.schemes.StegoScheme;
 import com.jxzheng.whisper.schemes.costs.UerdCost;
 import com.jxzheng.whisper.schemes.framing.ParityFraming;
@@ -29,34 +24,6 @@ public final class UerdStcScheme implements StegoScheme {
     @Override
     public String id() {
         return ID;
-    }
-
-    @Override
-    public SchemeInfo info() {
-        return new SchemeInfo(ID, "Adaptive (JPEG)", "Keeps your JPEG as JPEG", "bpnzAC");
-    }
-
-    @Override
-    public boolean accepts(CarrierProbe probe) {
-        if (probe == null || probe.prefix() == null || probe.prefix().length < 3) {
-            return false;
-        }
-        byte[] p = probe.prefix();
-        if ((p[0] & 0xff) == 0xff && (p[1] & 0xff) == 0xd8 && (p[2] & 0xff) == 0xff) {
-            return true;
-        }
-        String name = probe.name() == null ? "" : probe.name().toLowerCase(java.util.Locale.ROOT);
-        return name.endsWith(".jpg") || name.endsWith(".jpeg");
-    }
-
-    @Override
-    public Capacity estimate(Carrier cover, EmbedOptions options) {
-        JpegCoefficients jpeg = jpeg(cover);
-        int nz = jpeg.nzac();
-        double rate = Math.min(options.preset().rate(), HARD_RATE);
-        int max = ParityFraming.userBudget(nz, nz, rate);
-        int recommended = ParityFraming.userBudget(nz, nz, Math.min(rate, RatePreset.STANDARD.rate()));
-        return new Capacity(max, recommended, "bpnzAC", rate);
     }
 
     @Override
@@ -99,17 +66,6 @@ public final class UerdStcScheme implements StegoScheme {
         }
         double rate = Math.min(options.preset().rate(), HARD_RATE);
         return extractEncoded(stego.encoded(), visitSeed, rate);
-    }
-
-    @Override
-    public Optional<byte[]> publicSalt(Carrier stego, RatePreset preset) {
-        try {
-            JpegCoefficients jpeg = JpegCoefficients.parse(stego.encoded());
-            Ac ac = ac(jpeg.luma(), null);
-            return Optional.of(ParityFraming.readPublic(ac.samples, 10, Math.min(preset.rate(), HARD_RATE)));
-        } catch (RuntimeException e) {
-            return Optional.empty();
-        }
     }
 
     private static byte[] extractEncoded(byte[] encoded, byte[] seed, double rate) {

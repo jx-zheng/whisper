@@ -14,7 +14,6 @@ public final class VerifyMessages {
     public static final String INCOMPLETE = "Payload damaged (incomplete).";
     public static final String DECOMPRESS = "Payload damaged (decompression failed).";
     public static final String HASH = "Integrity check failed: content hash does not match.";
-    public static final String INTEGRITY_FAIL = "Tampered or wrong key (not encrypted).";
     public static final String DAMAGED = "Payload damaged.";
     public static final String LEGACY = "Unverified (legacy format — re-embed to get verification)";
     public static final String LEGACY_ENCRYPTED =
@@ -25,9 +24,5 @@ public final class VerifyMessages {
 
     public static String verified(String cipher, String sha256) {
         return "Verified · " + cipher + " · SHA-256 " + sha256;
-    }
-
-    public static String verifiedNotEncrypted(String sha256) {
-        return "Verified, not encrypted · SHA-256 " + sha256;
     }
 }

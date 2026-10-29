@@ -49,9 +49,11 @@ class HillStcTest {
         }
         noisy.ancillary.add(new RasterImage.Chunk("tEXt", "Comment\0secret".getBytes(StandardCharsets.ISO_8859_1)));
         noisy.ancillary.add(new RasterImage.Chunk("gAMA", new byte[] {0, 0, (byte) 0xb1, (byte) 0x8f}));
+        noisy.ancillary.add(new RasterImage.Chunk("tRNS", new byte[] {(byte) 0xff, 0, 0}));
         byte[] png = PngCodec.encode(noisy, false);
         String types = chunkTypes(png);
         assertTrue(types.contains("gAMA"));
+        assertTrue(types.contains("tRNS"));
         assertFalse(types.contains("tEXt"));
         int[] lens = PngCodec.idatLengths(png);
         assertTrue(lens.length > 1, "compressed size " + Arrays.stream(lens).sum());

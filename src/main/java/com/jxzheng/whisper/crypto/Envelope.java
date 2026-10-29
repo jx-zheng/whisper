@@ -136,7 +136,7 @@ public final class Envelope {
         KeySchedule.Derived derived = null;
         try {
             if (master == null) {
-                master = Argon2idKdf.INSTANCE.derive(
+                master = Argon2idKdf.INSTANCE.deriveReveal(
                         request.stegoPass == null ? new char[0] : request.stegoPass, parsed.salt, profile);
                 ownedMaster = true;
             }
@@ -166,7 +166,7 @@ public final class Envelope {
                 }
                 byte[] encSalt = KeySchedule.encSalt(parsed.salt);
                 try {
-                    encMaster = Argon2idKdf.INSTANCE.derive(request.encPass, encSalt, profile);
+                    encMaster = Argon2idKdf.INSTANCE.deriveReveal(request.encPass, encSalt, profile);
                 } finally {
                     Secrets.wipe(encSalt);
                 }
@@ -174,9 +174,8 @@ public final class Envelope {
             byte[] visit = Hkdf.expand(stegoMaster, null, KeySchedule.INFO_STEGO, 32);
             byte[] aead = Hkdf.expand(encMaster, null, KeySchedule.INFO_AEAD, 32);
             byte[] payload = Hkdf.expand(aead, parsed.fileNonce, KeySchedule.INFO_PAYLOAD, 32);
-            byte[] mac = Hkdf.expand(encMaster, parsed.fileNonce, KeySchedule.INFO_MAC, 32);
             Secrets.wipe(aead);
-            return new KeySchedule.Derived(visit, payload, mac, stegoMaster.clone());
+            return new KeySchedule.Derived(visit, payload, stegoMaster.clone());
         } finally {
             Secrets.wipe(encMaster);
         }

@@ -30,8 +30,8 @@ import com.jxzheng.whisper.schemes.ZhangTangStegoScheme;
  */
 public final class StegoOperations {
 
-    public static final String DEFAULT_SCHEME = "zhang-tang";
-    public static final String DEFAULT_CIPHER = "aes";
+    private static final String LEGACY_SCHEME = "zhang-tang";
+    private static final String LEGACY_CIPHER = "aes";
 
     public List<String> schemes() {
         return SchemeRegistry.shared().ids();
@@ -54,7 +54,7 @@ public final class StegoOperations {
      * string is the public empty-passphrase cipher key, and {@code null} is rejected.
      * When {@code encrypt} is false, {@code encryptKey} is ignored.
      */
-    public EmbedResult embed(
+    EmbedResult embed(
             BufferedImage cover,
             byte[] message,
             String stegoKey,
@@ -222,7 +222,7 @@ public final class StegoOperations {
 
     private static String canonicalScheme(String scheme) {
         String name = (scheme == null || scheme.isBlank())
-                ? DEFAULT_SCHEME
+                ? LEGACY_SCHEME
                 : scheme.toLowerCase(Locale.ROOT).trim();
         return switch (name) {
             case "zhang-tang", "zhangtang", "zt" -> "zhang-tang";
@@ -232,7 +232,7 @@ public final class StegoOperations {
 
     private static CipherService createCipher(String cipher) {
         String name = (cipher == null || cipher.isBlank())
-                ? DEFAULT_CIPHER
+                ? LEGACY_CIPHER
                 : cipher.toLowerCase(Locale.ROOT).trim();
         return switch (name) {
             case "aes" -> new AesCipher();

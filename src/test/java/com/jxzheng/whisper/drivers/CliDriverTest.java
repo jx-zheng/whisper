@@ -311,10 +311,10 @@ class CliDriverTest {
         Path cover = dir.resolve("cover.png");
         Path stego = dir.resolve("stego.png");
         ImageIO.write(noise(80, 80), "png", cover.toFile());
-        var embedded = new com.jxzheng.whisper.ops.StegoOperations().embed(
+        var embedded = com.jxzheng.whisper.ops.LegacyEmbed.embed(
                 com.jxzheng.whisper.ops.StegoOperations.readImage(cover),
                 "empty-aes".getBytes(StandardCharsets.UTF_8),
-                "walk", true, "", "zhang-tang", "aes");
+                "walk", true, "");
         ImageIO.write(embedded.image(), "png", stego.toFile());
         Path out = dir.resolve("out.txt");
         try (Capture note = Capture.of()) {
