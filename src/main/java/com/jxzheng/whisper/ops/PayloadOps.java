@@ -396,6 +396,16 @@ public final class PayloadOps {
         return Math.max(0, raw - (46 + nameBytes + mimeBytes));
     }
 
+    /**
+     * Content room for a fitted hidden image. The frame is stored as
+     * {@code image/jpeg} under the JPEG name {@link com.jxzheng.whisper.payload.PayloadFrame}
+     * writes, which can be longer than the source name and MIME.
+     */
+    public static int fitRoom(byte[] cover, String schemeId, RatePreset preset, String sourceName) {
+        String name = PayloadFrame.storedName(PayloadKind.IMAGE, sourceName, "image/jpeg", true);
+        return shownCapacity(cover, schemeId, preset, name, "image/jpeg");
+    }
+
     /** 24/32-bit BI_RGB BMP and 8-bit PNG stay as they are. Every other raster is converted. */
     static RasterImage coverRaster(byte[] cover) throws java.io.IOException {
         if (directBmp(cover)) {

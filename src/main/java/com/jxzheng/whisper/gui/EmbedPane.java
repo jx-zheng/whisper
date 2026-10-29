@@ -496,11 +496,8 @@ final class EmbedPane extends BorderPane {
             name = job.messageFile().getFileName() == null ? "image" : job.messageFile().getFileName().toString();
             mime = MimeSniffer.mime(content);
             if (job.fit()) {
-                int room = job.shownCapacity();
-                if (room < 0) {
-                    room = PayloadOps.shownCapacity(
-                            Files.readAllBytes(job.cover()), job.scheme(), RatePreset.fromId(job.preset()), name, mime);
-                }
+                int room = PayloadOps.fitRoom(
+                        Files.readAllBytes(job.cover()), job.scheme(), RatePreset.fromId(job.preset()), name);
                 ImageFit.Result fit = ImageFit.fit(content, 75, 1024, room);
                 content = fit.bytes();
                 reencoded = true;

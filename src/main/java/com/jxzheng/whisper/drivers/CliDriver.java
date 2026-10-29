@@ -30,6 +30,7 @@ import com.jxzheng.whisper.ops.StegoOperations.Report;
 import com.jxzheng.whisper.payload.ImageFit;
 import com.jxzheng.whisper.payload.MimeSniffer;
 import com.jxzheng.whisper.payload.NameSanitizer;
+import com.jxzheng.whisper.payload.PayloadFrame;
 import com.jxzheng.whisper.payload.PayloadKind;
 import com.jxzheng.whisper.schemes.RatePreset;
 import com.jxzheng.whisper.schemes.SchemeRegistry;
@@ -289,14 +290,14 @@ public class CliDriver {
             if (cl.hasOption("fit-quality") || cl.hasOption("fit-max-edge")) {
                 int quality = Integer.parseInt(cl.getOptionValue("fit-quality", "75"));
                 int edge = Integer.parseInt(cl.getOptionValue("fit-max-edge", "0"));
-                int room = PayloadOps.shownCapacity(
+                int room = PayloadOps.fitRoom(
                         Files.readAllBytes(input), scheme,
-                        RatePreset.fromId(cl.getOptionValue("preset", "standard")), name, mime);
+                        RatePreset.fromId(cl.getOptionValue("preset", "standard")), name);
                 ImageFit.Result fit = ImageFit.fit(content, quality, edge, room);
                 content = fit.bytes();
                 reencoded = true;
                 mime = "image/jpeg";
-                name = NameSanitizer.sanitize(name, mime);
+                name = PayloadFrame.storedName(PayloadKind.IMAGE, name, mime, true);
             }
         } else if (cl.hasOption("file")) {
             Path file = Path.of(cl.getOptionValue("file"));

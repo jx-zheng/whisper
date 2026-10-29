@@ -39,19 +39,8 @@ public final class PayloadFrame {
             throw new IllegalArgumentException("content is required");
         }
         String safeMime = NameSanitizer.mime(mime);
-        String safeName = kind == PayloadKind.TEXT ? "" : NameSanitizer.sanitize(name, safeMime);
-        if (kind == PayloadKind.TEXT) {
-            safeName = "";
-        }
+        String safeName = storedName(kind, name, safeMime, reencoded);
         byte[] nameBytes = safeName.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        if (nameBytes.length > MAX_NAME) {
-            safeName = NameSanitizer.sanitize(safeName, safeMime);
-            nameBytes = safeName.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        }
-        if (reencoded) {
-            safeName = jpgName(safeName);
-            nameBytes = safeName.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        }
         byte[] mimeBytes = safeMime.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
         byte[] digest = sha256(content);
         int flags = 0;
@@ -84,6 +73,15 @@ public final class PayloadFrame {
         p += 32;
         System.arraycopy(content, 0, out, p, content.length);
         return new Built(out, digest, safeName, safeMime);
+    }
+
+    /** Name {@link #build} will store for this kind, MIME, and re-encode flag. */
+    public static String storedName(PayloadKind kind, String name, String mime, boolean reencoded) {
+        if (kind == PayloadKind.TEXT) {
+            return "";
+        }
+        String safeName = NameSanitizer.sanitize(name, NameSanitizer.mime(mime));
+        return reencoded ? jpgName(safeName) : safeName;
     }
 
     public static Parsed parse(byte[] frame) throws PayloadFormatException {
