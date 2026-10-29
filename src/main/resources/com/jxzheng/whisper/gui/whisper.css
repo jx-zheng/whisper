@@ -1,24 +1,4 @@
-.root.theme-light {
-    -whisper-bg: #eef0f4;
-    -whisper-header: #fbfbfc;
-    -whisper-surface: #ffffff;
-    -whisper-field: #f5f6f8;
-    -whisper-line: #e1e4ea;
-    -whisper-text: #1a1d24;
-    -whisper-muted: #5e6778;
-    -whisper-faint: #8b93a3;
-    -whisper-accent: #3d56d6;
-    -whisper-accent-strong: #3d56d6;
-    -whisper-accent-hover: #3148c0;
-    -whisper-accent-soft: #e7ebfb;
-    -whisper-ok: #0e7a52;
-    -whisper-warn: #8a5a00;
-    -whisper-warn-soft: #fff1d6;
-    -whisper-danger: #b42318;
-    -fx-background-color: -whisper-bg;
-}
-
-.root.theme-dark {
+.root {
     -whisper-bg: #101218;
     -whisper-header: #161922;
     -whisper-surface: #1c2030;
@@ -36,9 +16,12 @@
     -whisper-warn-soft: #3a311c;
     -whisper-danger: #ff9b94;
     -fx-background-color: -whisper-bg;
-}
-
-.root {
+    -fx-background: -whisper-bg;
+    -fx-base: #1c2030;
+    -fx-control-inner-background: -whisper-field;
+    -fx-control-inner-background-alt: -whisper-surface;
+    -fx-accent: -whisper-accent-strong;
+    -fx-light-text-color: -whisper-text;
     -fx-font-size: 13px;
     -fx-focus-color: -whisper-accent-strong;
     -fx-faint-focus-color: transparent;
@@ -117,10 +100,6 @@
     -fx-border-radius: 12;
     -fx-border-width: 1;
     -fx-padding: 14;
-    -fx-effect: dropshadow(gaussian, rgba(16, 24, 40, 0.05), 16, 0.15, 0, 2);
-}
-
-.theme-dark .card {
     -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.35), 18, 0.2, 0, 2);
 }
 
@@ -152,7 +131,10 @@
     -fx-highlight-text-fill: -whisper-text;
 }
 
-.text-area .content {
+.text-area .content,
+.text-area .scroll-pane,
+.text-area .scroll-pane > .viewport,
+.text-area .scroll-pane > .corner {
     -fx-background-color: -whisper-field;
     -fx-background-radius: 6;
 }
@@ -242,8 +224,15 @@
     -fx-border-color: transparent;
 }
 
-.button:disabled, .toggle-button:disabled {
-    -fx-opacity: 0.55;
+.button:disabled,
+.toggle-button:disabled,
+.combo-box:disabled,
+.text-field:disabled,
+.text-area:disabled,
+.password-field:disabled,
+.check-box:disabled,
+.radio-button:disabled {
+    -fx-opacity: 0.5;
 }
 
 .check-box, .radio-button {
@@ -291,7 +280,8 @@
     -fx-padding: 0;
 }
 
-.scroll-pane.pane-scroll > .viewport {
+.scroll-pane.pane-scroll > .viewport,
+.scroll-pane.pane-scroll > .corner {
     -fx-background-color: -whisper-bg;
 }
 
@@ -390,4 +380,25 @@
 
 .progress-indicator .spinner {
     -fx-padding: 0;
+}
+
+.dialog-pane {
+    -fx-background-color: -whisper-surface;
+}
+
+.dialog-pane:header .header-panel {
+    -fx-background-color: -whisper-header;
+}
+
+.dialog-pane:header .header-panel .label {
+    -fx-text-fill: -whisper-text;
+    -fx-font-size: 14px;
+}
+
+.dialog-pane > .content.label {
+    -fx-text-fill: -whisper-muted;
+}
+
+.dialog-pane > .button-bar > .container {
+    -fx-background-color: -whisper-surface;
 }

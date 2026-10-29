@@ -17,6 +17,10 @@ import com.jxzheng.whisper.exceptions.EncryptionException;
  * AES-128-GCM. Ciphertext layout:
  * {@code [16-byte salt][12-byte IV][ciphertext || 16-byte tag]}.
  * The key is derived via PBKDF2-HMAC-SHA256.
+ *
+ * <p>An empty passphrase is a valid cipher key: PBKDF2 of the empty password
+ * with the random per-message salt. The salt, IV, and tag are unchanged, so
+ * authentication still holds, but the key is public and provides no confidentiality.
  */
 public class AesCipher implements CipherService {
 
@@ -95,8 +99,9 @@ public class AesCipher implements CipherService {
     }
 
     private static void requireKey(String key) {
-        if (key == null || key.isEmpty()) {
-            throw new IllegalArgumentException("key must not be null or empty");
+        if (key == null) {
+            throw new IllegalArgumentException(
+                    "key must not be null; an empty string is the public empty-passphrase AES-GCM key");
         }
     }
 }

@@ -7,8 +7,8 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.Scene;
-import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.paint.Color;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
@@ -31,8 +31,10 @@ import javafx.stage.Stage;
  */
 public final class WhisperApp extends Application {
 
+    /** Matches {@code -whisper-bg} in whisper.css so the window frame is dark before CSS paints. */
+    private static final Color WINDOW_FILL = Color.web("#101218");
+
     private final BorderPane root = new BorderPane();
-    private Button themeButton;
 
     public static void main(String[] args) {
         System.setProperty("apple.awt.application.name", "Whisper");
@@ -51,10 +53,11 @@ public final class WhisperApp extends Application {
         embedToggle = modeButton("Embed", modes);
         extractToggle = modeButton("Extract", modes);
         ToggleButton analyzeToggle = modeButton("Analyze", modes);
-        EmbedPane embed = new EmbedPane(operations, status, (stego, key, decrypt, scheme, cipher) -> {
-            extract.loadFromEmbed(stego, key, decrypt, scheme, cipher);
-            extractToggle.setSelected(true);
-        });
+        EmbedPane embed = new EmbedPane(operations, status,
+                (stego, stegoKey, encryptKey, decrypt, scheme, cipher) -> {
+                    extract.loadFromEmbed(stego, stegoKey, encryptKey, decrypt, scheme, cipher);
+                    extractToggle.setSelected(true);
+                });
         embedToggle.setSelected(true);
 
         ScrollPane embedPage = scroll(embed);
@@ -74,14 +77,12 @@ public final class WhisperApp extends Application {
         showPage(extractPage, false);
         showPage(analyzePage, false);
 
-        boolean dark = UiPrefs.darkTheme();
-        root.getStyleClass().add(dark ? "theme-dark" : "theme-light");
         root.setStyle("-fx-font-family: \"" + UiFonts.sans + "\";");
-        root.setTop(header(dark, modes, embedToggle, extractToggle, analyzeToggle));
+        root.setTop(header(modes, embedToggle, extractToggle, analyzeToggle));
         root.setCenter(pages);
         root.setBottom(status);
 
-        Scene scene = new Scene(root, 1080, 760);
+        Scene scene = new Scene(root, PREFERRED_WIDTH, PREFERRED_HEIGHT, WINDOW_FILL);
         var stylesheet = WhisperApp.class.getResource("whisper.css");
         if (stylesheet == null) {
             throw new IllegalStateException("Missing whisper.css");
@@ -99,21 +100,21 @@ public final class WhisperApp extends Application {
 
         stage.setTitle("Whisper");
         stage.setScene(scene);
-        stage.setMinWidth(780);
-        stage.setMinHeight(560);
+        stage.setMinWidth(MIN_WIDTH);
+        stage.setMinHeight(MIN_HEIGHT);
         var icon = WhisperApp.class.getResource("icon.png");
         if (icon != null) {
             stage.getIcons().add(new Image(icon.toExternalForm()));
         }
         Rectangle2D bounds = Screen.getPrimary().getVisualBounds();
-        stage.setWidth(Math.min(1080, Math.max(780, bounds.getWidth() - 48)));
-        stage.setHeight(Math.min(800, Math.max(560, bounds.getHeight() - 64)));
+        stage.setWidth(Math.min(PREFERRED_WIDTH, Math.max(MIN_WIDTH, bounds.getWidth() - 48)));
+        stage.setHeight(Math.min(PREFERRED_HEIGHT, Math.max(MIN_HEIGHT, bounds.getHeight() - 64)));
         stage.setX(bounds.getMinX() + Math.max(0, (bounds.getWidth() - stage.getWidth()) / 2));
         stage.setY(bounds.getMinY() + Math.max(0, (bounds.getHeight() - stage.getHeight()) / 2));
         stage.show();
     }
 
-    private VBox header(boolean dark, ToggleGroup modes, ToggleButton embed, ToggleButton extract, ToggleButton analyze) {
+    private VBox header(ToggleGroup modes, ToggleButton embed, ToggleButton extract, ToggleButton analyze) {
         ImageView mark = new ImageView();
         var icon = WhisperApp.class.getResource("icon.png");
         if (icon != null) {
@@ -125,24 +126,19 @@ public final class WhisperApp extends Application {
         title.getStyleClass().add("brand-title");
         Label subtitle = new Label("Zhang–Tang LSB-pair steganography");
         subtitle.getStyleClass().add("hint");
+        subtitle.setWrapText(true);
+        subtitle.setMinWidth(0);
         VBox titles = new VBox(1, title, subtitle);
-        themeButton = new Button(dark ? "Dark" : "Light");
-        themeButton.setOnAction(event -> applyTheme(!root.getStyleClass().contains("theme-dark")));
-        themeButton.setAccessibleText("Toggle color theme");
-        HBox brand = new HBox(12, mark, titles, Forms.spacer(), themeButton);
+        titles.setMinWidth(0);
+        HBox.setHgrow(titles, Priority.ALWAYS);
+        subtitle.maxWidthProperty().bind(titles.widthProperty());
+        HBox brand = new HBox(12, mark, titles);
         brand.setAlignment(Pos.CENTER_LEFT);
         brand.getStyleClass().add("header");
         HBox modesBar = new HBox(4, embed, extract, analyze);
         modesBar.getStyleClass().add("mode-bar");
         modesBar.setPadding(new Insets(0, 12, 0, 12));
         return new VBox(brand, modesBar);
-    }
-
-    private void applyTheme(boolean dark) {
-        root.getStyleClass().removeAll("theme-light", "theme-dark");
-        root.getStyleClass().add(dark ? "theme-dark" : "theme-light");
-        themeButton.setText(dark ? "Dark" : "Light");
-        UiPrefs.darkTheme(dark);
     }
 
     private static ToggleButton modeButton(String text, ToggleGroup group) {
@@ -160,8 +156,15 @@ public final class WhisperApp extends Application {
         scroll.getStyleClass().add("pane-scroll");
         scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         scroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        HBox.setHgrow(content, Priority.ALWAYS);
-        VBox.setVgrow(content, Priority.ALWAYS);
+        content.setMinWidth(0);
+        // At least as tall as the viewport so text areas can grow, and taller
+        // than the viewport when the form needs a vertical scrollbar.
+        scroll.viewportBoundsProperty().addListener((obs, previous, bounds) -> {
+            double height = bounds.getHeight();
+            if (height > 0 && Math.abs(content.getMinHeight() - height) > 1) {
+                content.setMinHeight(height);
+            }
+        });
         return scroll;
     }
 
@@ -172,4 +175,10 @@ public final class WhisperApp extends Application {
 
     private ToggleButton embedToggle;
     private ToggleButton extractToggle;
+
+    /** Smallest window that still shows the tabs, a field, and a button. */
+    private static final double MIN_WIDTH = 640;
+    private static final double MIN_HEIGHT = 480;
+    private static final double PREFERRED_WIDTH = 1080;
+    private static final double PREFERRED_HEIGHT = 760;
 }

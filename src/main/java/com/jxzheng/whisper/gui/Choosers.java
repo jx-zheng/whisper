@@ -131,6 +131,10 @@ final class Choosers {
         if (owner != null) {
             alert.initOwner(owner);
         }
+        var css = Choosers.class.getResource("whisper.css");
+        if (css != null) {
+            alert.getDialogPane().getStylesheets().add(css.toExternalForm());
+        }
         String name = path.getFileName() == null ? path.toString() : path.getFileName().toString();
         alert.setTitle("Overwrite file");
         alert.setHeaderText("Overwrite " + name + "?");

@@ -28,10 +28,15 @@ final class Forms {
     }
 
     static HBox pathRow(TextField field, Node browse) {
+        field.setMinWidth(0);
         field.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(field, Priority.ALWAYS);
+        if (browse instanceof Region region) {
+            region.setMinWidth(Region.USE_PREF_SIZE);
+        }
         HBox row = new HBox(8, field, browse);
         row.setAlignment(Pos.CENTER_LEFT);
+        row.setMinWidth(0);
         return row;
     }
 
@@ -45,6 +50,7 @@ final class Forms {
         ComboBox<String> box = new ComboBox<>();
         box.getItems().setAll(items);
         box.setValue(value);
+        box.setMinWidth(72);
         box.setMaxWidth(Double.MAX_VALUE);
         return box;
     }
@@ -53,6 +59,8 @@ final class Forms {
         Label label = new Label(text);
         label.getStyleClass().add("hint");
         label.setWrapText(true);
+        label.setMinWidth(0);
+        label.setMaxWidth(280);
         label.setMinHeight(Region.USE_PREF_SIZE);
         return label;
     }
@@ -60,10 +68,15 @@ final class Forms {
     /** Gives hint labels a real width so JavaFX wraps them instead of ellipsizing. */
     static void wrapHints(Region scope) {
         scope.widthProperty().addListener((obs, previous, width) -> {
-            double max = Math.max(180, width.doubleValue() - 8);
+            if (width.doubleValue() <= 0) {
+                return;
+            }
+            // Card padding sits inside the form or image column, so wrap inside that.
+            double max = Math.max(140, width.doubleValue() - 36);
             for (Node node : scope.lookupAll(".hint")) {
                 if (node instanceof Label label) {
                     label.setWrapText(true);
+                    label.setMinWidth(0);
                     label.setMaxWidth(max);
                 }
             }

@@ -70,7 +70,26 @@ class CliDriverTest {
     }
 
     @Test
-    void encryptedRoundTrip(@TempDir Path dir) throws Exception {
+    void blankStegoKeyRoundTripsWhenOmitted(@TempDir Path dir) throws Exception {
+        Path cover = dir.resolve("cover.png");
+        Path stego = dir.resolve("stego.png");
+        Path outFile = dir.resolve("out.txt");
+        ImageIO.write(noise(48, 48), "png", cover.toFile());
+
+        CliDriver driver = new CliDriver();
+        try (Capture ignored = Capture.of()) {
+            assertEquals(0, driver.run(new String[] {
+                    "embed", "-i", cover.toString(), "-o", stego.toString(), "-m", "no-key"
+            }));
+            assertEquals(0, driver.run(new String[] {
+                    "extract", "-i", stego.toString(), "-k", "", "-o", outFile.toString()
+            }));
+        }
+        assertEquals("no-key", Files.readString(outFile));
+    }
+
+    @Test
+    void distinctStegoAndEncryptKeysRoundTrip(@TempDir Path dir) throws Exception {
         Path cover = dir.resolve("cover.png");
         Path stego = dir.resolve("stego.png");
         Path outFile = dir.resolve("out.txt");
@@ -80,13 +99,66 @@ class CliDriverTest {
         try (Capture ignored = Capture.of()) {
             assertEquals(0, driver.run(new String[] {
                     "embed", "-i", cover.toString(), "-o", stego.toString(),
-                    "-m", "hidden", "-k", "secret", "-e", "-c", "aes"
+                    "-m", "hidden", "-k", "walk", "-e", "-E", "cipher", "-c", "aes"
             }));
             assertEquals(0, driver.run(new String[] {
-                    "extract", "-i", stego.toString(), "-k", "secret", "-e", "-o", outFile.toString()
+                    "extract", "-i", stego.toString(), "-k", "walk", "-e", "-E", "cipher",
+                    "-o", outFile.toString()
             }));
         }
         assertEquals("hidden", Files.readString(outFile));
+
+        try (Capture error = Capture.of()) {
+            assertEquals(1, driver.run(new String[] {
+                    "extract", "-i", stego.toString(), "-k", "walk", "-e", "-E", "walk"
+            }));
+            assertTrue(error.stderr().toLowerCase(java.util.Locale.ROOT).contains("decrypt"));
+        }
+        try (Capture error = Capture.of()) {
+            assertEquals(1, driver.run(new String[] {
+                    "extract", "-i", stego.toString(), "-k", "cipher", "-e", "-E", "cipher"
+            }));
+            assertTrue(error.stderr().contains("wrong key"));
+        }
+    }
+
+    @Test
+    void encryptRequiresItsOwnKey(@TempDir Path dir) throws Exception {
+        Path cover = dir.resolve("cover.png");
+        Path stego = dir.resolve("stego.png");
+        ImageIO.write(noise(32, 32), "png", cover.toFile());
+
+        try (Capture error = Capture.of()) {
+            int code = new CliDriver().run(new String[] {
+                    "embed", "-i", cover.toString(), "-o", stego.toString(),
+                    "-m", "x", "-k", "walk", "-e"
+            });
+            assertEquals(1, code);
+            assertTrue(error.stderr().contains("--encrypt-key"));
+            assertTrue(error.stderr().contains("does not reuse"));
+            assertFalse(Files.exists(stego));
+        }
+    }
+
+    @Test
+    void emptyEncryptKeyRoundTrips(@TempDir Path dir) throws Exception {
+        Path cover = dir.resolve("cover.png");
+        Path stego = dir.resolve("stego.png");
+        Path outFile = dir.resolve("out.txt");
+        ImageIO.write(noise(48, 48), "png", cover.toFile());
+
+        CliDriver driver = new CliDriver();
+        try (Capture ignored = Capture.of()) {
+            assertEquals(0, driver.run(new String[] {
+                    "embed", "-i", cover.toString(), "-o", stego.toString(),
+                    "-m", "open-cipher", "-k", "walk", "-e", "-E", ""
+            }));
+            assertEquals(0, driver.run(new String[] {
+                    "extract", "-i", stego.toString(), "-k", "walk", "-e", "-E", "",
+                    "-o", outFile.toString()
+            }));
+        }
+        assertEquals("open-cipher", Files.readString(outFile));
     }
 
     @Test
@@ -126,6 +198,8 @@ class CliDriverTest {
             String text = out.stdout();
             assertTrue(text.contains("analyze"));
             assertTrue(text.contains("PNG or BMP"));
+            assertTrue(text.contains("encrypt-key"));
+            assertFalse(text.contains("also used as cipher"));
             assertFalse(text.contains("gui"));
             assertFalse(text.contains("<<<<<<<"));
             assertFalse(text.contains(">>>>>>>"));

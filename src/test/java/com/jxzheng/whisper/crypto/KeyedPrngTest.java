@@ -37,8 +37,20 @@ class KeyedPrngTest {
     }
 
     @Test
-    void rejectsEmptyPassphrase() {
-        assertThrows(IllegalArgumentException.class, () -> KeyedPrng.fromPassphrase(""));
+    void emptyPassphraseIsThePublicDefaultWalk() {
+        assertArrayEquals(sample(KeyedPrng.fromPassphrase(""), 16), sample(KeyedPrng.fromPassphrase(""), 16));
+        assertFalse(Arrays.equals(sample(KeyedPrng.fromPassphrase(""), 8), sample(KeyedPrng.fromPassphrase("x"), 8)));
+        assertFalse(Arrays.equals(sample(KeyedPrng.fromPassphrase(""), 8), sample(KeyedPrng.fromPassphrase(" "), 8)));
+        byte[] headerKey = KeyedPrng.headerMacKey("");
+        assertEquals(32, headerKey.length);
+        assertArrayEquals(headerKey, KeyedPrng.headerMacKey(""));
+        assertFalse(Arrays.equals(headerKey, KeyedPrng.headerMacKey("x")));
+    }
+
+    @Test
+    void nullPassphraseRejected() {
+        assertThrows(NullPointerException.class, () -> KeyedPrng.fromPassphrase(null));
+        assertThrows(NullPointerException.class, () -> KeyedPrng.headerMacKey(null));
     }
 
     @Test

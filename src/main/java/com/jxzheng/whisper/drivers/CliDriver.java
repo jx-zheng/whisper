@@ -26,8 +26,8 @@ import com.jxzheng.whisper.ops.StegoOperations.Report;
  * Command-line front-end for embed, extract, and statistical analysis.
  *
  * <pre>
- *   whisper embed   -i cover.png -o stego.png -m "secret" -k passphrase [-e]
- *   whisper extract -i stego.png -k passphrase [-e] [-o message.txt]
+ *   whisper embed   -i cover.png -o stego.png -m "secret" [-k stego-key] [-e -E encrypt-key]
+ *   whisper extract -i stego.png [-k stego-key] [-e -E encrypt-key] [-o message.txt]
  *   whisper analyze -i stego.png
  * </pre>
  */
@@ -84,9 +84,10 @@ public class CliDriver {
 
         Path inputPath = requiredPath(cl, "input-file");
         Path outputPath = requiredPath(cl, "output-file");
-        String key = requiredKey(cl);
+        String stegoKey = stegoKey(cl);
         byte[] message = resolveMessageBytes(cl);
         boolean encrypt = cl.hasOption("encrypt");
+        String encryptKey = encryptKey(cl, encrypt);
 
         ImageFormats.requireLosslessOutput(outputPath);
         String coverWarning = ImageFormats.lossyInputWarning(inputPath);
@@ -98,8 +99,9 @@ public class CliDriver {
         EmbedResult result = operations.embed(
                 cover,
                 message,
-                key,
+                stegoKey,
                 encrypt,
+                encryptKey,
                 cl.getOptionValue("scheme", StegoOperations.DEFAULT_SCHEME),
                 cl.getOptionValue("cipher", StegoOperations.DEFAULT_CIPHER));
         StegoOperations.writeStego(result.image(), outputPath);
@@ -115,14 +117,16 @@ public class CliDriver {
         }
 
         Path inputPath = requiredPath(cl, "input-file");
-        String key = requiredKey(cl);
+        String stegoKey = stegoKey(cl);
         boolean decrypt = cl.hasOption("encrypt");
+        String encryptKey = encryptKey(cl, decrypt);
 
         BufferedImage stego = StegoOperations.readImage(inputPath);
         byte[] payload = operations.extract(
                 stego,
-                key,
+                stegoKey,
                 decrypt,
+                encryptKey,
                 cl.getOptionValue("scheme", StegoOperations.DEFAULT_SCHEME),
                 cl.getOptionValue("cipher", StegoOperations.DEFAULT_CIPHER));
 
@@ -192,13 +196,33 @@ public class CliDriver {
         return value;
     }
 
-    /** Spaces are a real passphrase. Only a missing or empty {@code -k} is rejected. */
-    private static String requiredKey(CommandLine cl) {
-        String value = cl.getOptionValue("key");
-        if (value == null || value.isEmpty()) {
-            throw new IllegalArgumentException("Missing required option: --key");
+    /**
+     * Spaces are a real stego key. A missing or empty {@code -k} selects the public
+     * default walk (PBKDF2 of the empty string).
+     */
+    private static String stegoKey(CommandLine cl) {
+        if (!cl.hasOption("key")) {
+            return "";
         }
-        return value;
+        String value = cl.getOptionValue("key");
+        return value == null ? "" : value;
+    }
+
+    /**
+     * Required when {@code -e} is set. Never falls back to {@code -k}.
+     * An empty value is the public empty-string AES-GCM key.
+     */
+    private static String encryptKey(CommandLine cl, boolean encrypt) {
+        if (!encrypt) {
+            return null;
+        }
+        if (!cl.hasOption("encrypt-key")) {
+            throw new IllegalArgumentException(
+                    "Missing --encrypt-key. Encryption does not reuse the stego key (-k). "
+                            + "Pass --encrypt-key; an empty value uses the public empty-string AES-GCM key.");
+        }
+        String value = cl.getOptionValue("encrypt-key");
+        return value == null ? "" : value;
     }
 
     private void printHelp() {
@@ -217,9 +241,17 @@ public class CliDriver {
                 """,
                 options,
                 """
+                The stego key (-k) and the encryption passphrase (-E) are independent.
+                Omit -k, or pass an empty value, for the public empty-string pixel walk.
+                -e encrypts only the hidden message. It requires -E and does not reuse -k.
+                An empty -E is a valid AES-GCM key and is not confidential.
+                The stego file stays a normal PNG or BMP.
+
                 Examples:
-                  whisper embed -i cover.png -o stego.png -m "hello" -k secret
-                  whisper extract -i stego.png -k secret
+                  whisper embed -i cover.png -o stego.png -m "hello"
+                  whisper embed -i cover.png -o stego.png -m "hello" -k walk-secret -e -E cipher-secret
+                  whisper extract -i stego.png
+                  whisper extract -i stego.png -k walk-secret -e -E cipher-secret
                   whisper analyze -i stego.png
                 """,
                 true);
@@ -241,9 +273,15 @@ public class CliDriver {
         options.addOption(Option.builder("c").longOpt("cipher").hasArg().argName("name")
                 .desc("Cipher to use with -e (default: aes)").build());
         options.addOption(Option.builder("e").longOpt("encrypt")
-                .desc("Encrypt message payload before embed / decrypt after extract").build());
+                .desc("Encrypt the message payload before embed / decrypt after extract. "
+                        + "Does not encrypt the image. Requires --encrypt-key; -k is not reused.").build());
         options.addOption(Option.builder("k").longOpt("key").hasArg().argName("key")
-                .desc("Steganographic key (also used as cipher passphrase when -e is set)").build());
+                .desc("Stego / pixel-walk key. Optional. Omitted or empty uses the public "
+                        + "empty-string walk.").build());
+        options.addOption(Option.builder("E").longOpt("encrypt-key").hasArg().argName("key")
+                .desc("Encryption passphrase (PBKDF2 to AES-GCM) for the payload only. "
+                        + "Required with -e. Not copied from -k. An empty value is the public "
+                        + "empty-string cipher key.").build());
         options.addOption(Option.builder("h").longOpt("help").desc("Show usage information").build());
         return options;
     }

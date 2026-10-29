@@ -16,9 +16,9 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
 final class AnalyzePane extends BorderPane {
@@ -44,7 +44,6 @@ final class AnalyzePane extends BorderPane {
 
     private int loadGeneration;
     private String loaded = "";
-    private boolean arranged;
     private boolean stacked;
 
     AnalyzePane(StegoOperations operations, StatusBar status) {
@@ -64,8 +63,10 @@ final class AnalyzePane extends BorderPane {
         rsDetail.getStyleClass().add("hint");
         rsDetail.setWrapText(true);
 
-        HBox chiMetrics = new HBox(18, pValue, balance, chiSquare);
-        HBox rsMetrics = new HBox(18, rate, asymmetry);
+        FlowPane chiMetrics = new FlowPane(18, 10, pValue, balance, chiSquare);
+        FlowPane rsMetrics = new FlowPane(18, 10, rate, asymmetry);
+        chiMetrics.setPrefWrapLength(320);
+        rsMetrics.setPrefWrapLength(320);
         VBox chiCard = card("Chi-square", new VBox(8,
                 badge,
                 chiMetrics,
@@ -81,9 +82,22 @@ final class AnalyzePane extends BorderPane {
         HBox actions = new HBox(8, analyzeButton);
         actions.setAlignment(Pos.CENTER_LEFT);
         form.getChildren().addAll(actions, chiCard, rsCard);
+        form.setMinWidth(0);
+        chiCard.widthProperty().addListener((obs, previous, width) -> {
+            if (width.doubleValue() > 0) {
+                chiMetrics.setPrefWrapLength(Math.max(200, width.doubleValue() - 8));
+            }
+        });
+        rsCard.widthProperty().addListener((obs, previous, width) -> {
+            if (width.doubleValue() > 0) {
+                rsMetrics.setPrefWrapLength(Math.max(200, width.doubleValue() - 8));
+            }
+        });
 
         imageCard.attachPath("Image", imageField);
         imageColumn.getChildren().add(imageCard);
+        VBox.setVgrow(imageCard, Priority.ALWAYS);
+        imageCard.setMaxHeight(Double.MAX_VALUE);
         Forms.wrapHints(form);
         Forms.wrapHints(imageColumn);
         imageCard.setOnBrowse(this::chooseImage);
@@ -97,37 +111,16 @@ final class AnalyzePane extends BorderPane {
         analyzeButton.setOnAction(event -> analyze());
 
         widthProperty().addListener((obs, previous, width) -> arrange(width.doubleValue()));
-        placeImage(false);
+        setMinWidth(0);
+        PaneLayout.apply(this, imageColumn, imageCard, form, false, 1080);
     }
 
     private void arrange(double width) {
         if (width <= 0) {
             return;
         }
-        boolean stack = width < 820;
-        if (arranged && stack == stacked) {
-            return;
-        }
-        arranged = true;
-        stacked = stack;
-        placeImage(stack);
-    }
-
-    private void placeImage(boolean stack) {
-        if (stack) {
-            setLeft(null);
-            setTop(imageColumn);
-            imageColumn.setPrefWidth(Region.USE_COMPUTED_SIZE);
-            imageColumn.setMaxWidth(Double.MAX_VALUE);
-            BorderPane.setMargin(imageColumn, new Insets(0, 0, 16, 0));
-        } else {
-            setTop(null);
-            setLeft(imageColumn);
-            imageColumn.setPrefWidth(340);
-            imageColumn.setMaxWidth(340);
-            BorderPane.setMargin(imageColumn, new Insets(0, 16, 0, 0));
-        }
-        setCenter(form);
+        stacked = PaneLayout.stacked(stacked, width);
+        PaneLayout.apply(this, imageColumn, imageCard, form, stacked, width);
     }
 
     private void chooseImage() {
@@ -266,7 +259,8 @@ final class AnalyzePane extends BorderPane {
             value.getStyleClass().add("metric-value");
             value.setStyle("-fx-font-family: \"" + UiFonts.mono + "\";");
             getChildren().addAll(value, captionLabel);
-            setMinWidth(120);
+            setMinWidth(108);
+            setMaxWidth(220);
         }
 
         void setValue(String text) {

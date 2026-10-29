@@ -43,11 +43,19 @@ public final class StegoOperations {
     public record Report(ChiSquareAnalyzer.Result chiSquare, RsAnalyzer.Result rs) {
     }
 
+    /**
+     * Embeds {@code message}. {@code stegoKey} selects the pixel walk and may be empty,
+     * which is the public default walk. When {@code encrypt} is true, {@code encryptKey}
+     * is the AES-GCM passphrase and is never taken from {@code stegoKey}; an empty
+     * string is the public empty-passphrase cipher key, and {@code null} is rejected.
+     * When {@code encrypt} is false, {@code encryptKey} is ignored.
+     */
     public EmbedResult embed(
             BufferedImage cover,
             byte[] message,
-            String key,
+            String stegoKey,
             boolean encrypt,
+            String encryptKey,
             String scheme,
             String cipher) throws EncryptionException {
         if (cover == null) {
@@ -56,38 +64,47 @@ public final class StegoOperations {
         if (message == null) {
             throw new IllegalArgumentException("message must not be null");
         }
-        requireKey(key);
+        String walkKey = requireStegoKey(stegoKey);
         canonicalScheme(scheme);
+        String cipherKey = encrypt ? requireEncryptKey(encryptKey) : null;
         CipherService cipherService = encrypt ? createCipher(cipher) : null;
         if (!fits(cover.getWidth(), cover.getHeight(), message.length, encrypt)) {
             throw capacityError(cover.getWidth(), cover.getHeight(), message.length, encrypt);
         }
 
-        byte[] payload = cipherService == null ? message : cipherService.encrypt(message, key);
+        byte[] payload = cipherService == null ? message : cipherService.encrypt(message, cipherKey);
         if (payload.length > AbstractScheme.MAX_PAYLOAD_LENGTH) {
             throw new MessageTooLongException(
                     "Message exceeds max message length of " + AbstractScheme.MAX_PAYLOAD_LENGTH);
         }
-        BufferedImage stego = createScheme(scheme, cover, key).embedMessage(payload);
+        BufferedImage stego = createScheme(scheme, cover, walkKey).embedMessage(payload);
         return new EmbedResult(stego, payload.length);
     }
 
+    /**
+     * Extracts a payload. {@code stegoKey} must be the walk used at embed time,
+     * including the empty public default. When {@code decrypt} is true,
+     * {@code encryptKey} is the AES-GCM passphrase and is never taken from
+     * {@code stegoKey}.
+     */
     public byte[] extract(
             BufferedImage stego,
-            String key,
+            String stegoKey,
             boolean decrypt,
+            String encryptKey,
             String scheme,
             String cipher) throws EncryptionException {
         if (stego == null) {
             throw new IllegalArgumentException("image must not be null");
         }
-        requireKey(key);
+        String walkKey = requireStegoKey(stegoKey);
+        String cipherKey = decrypt ? requireEncryptKey(encryptKey) : null;
         if (decrypt) {
             createCipher(cipher);
         }
-        byte[] payload = createScheme(scheme, stego, key).extractMessage();
+        byte[] payload = createScheme(scheme, stego, walkKey).extractMessage();
         if (decrypt) {
-            payload = createCipher(cipher).decrypt(payload, key);
+            payload = createCipher(cipher).decrypt(payload, cipherKey);
         }
         return payload;
     }
@@ -223,9 +240,26 @@ public final class StegoOperations {
         };
     }
 
-    private static void requireKey(String key) {
-        if (key == null || key.isEmpty()) {
-            throw new IllegalArgumentException("Passphrase must not be empty");
+    /** Empty is the public default walk. Null is a caller error. */
+    private static String requireStegoKey(String key) {
+        if (key == null) {
+            throw new IllegalArgumentException(
+                    "Stego key must not be null; use an empty string for the public default walk");
         }
+        return key;
+    }
+
+    /**
+     * Required whenever encryption is on. Empty is the public AES-GCM key.
+     * The stego key is never substituted here.
+     */
+    private static String requireEncryptKey(String key) {
+        if (key == null) {
+            throw new IllegalArgumentException(
+                    "Encryption passphrase is required when encryption is enabled. "
+                            + "It is not taken from the stego key. "
+                            + "Pass an empty string to use the public empty-string AES-GCM key.");
+        }
+        return key;
     }
 }

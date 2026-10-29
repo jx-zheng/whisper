@@ -18,6 +18,10 @@ import javax.crypto.spec.SecretKeySpec;
  * then expanded via HMAC-SHA256 in counter mode with a labeled input. The same
  * passphrase always replays the same walk; distinct passphrases diverge quickly.
  * This replaces both {@code Random(key.hashCode())} and a bare SHA-256 seed.
+ *
+ * <p>An empty passphrase is the public default walk: the same KDF with an empty
+ * password. It is deterministic and not a secret. The derived key is cached
+ * because every embed and extract with a blank stego passphrase uses it.
  */
 public final class KeyedPrng extends Random {
 
@@ -45,21 +49,48 @@ public final class KeyedPrng extends Random {
 
     public static KeyedPrng fromPassphrase(String passphrase) {
         Objects.requireNonNull(passphrase, "passphrase");
+        return new KeyedPrng(stretch(passphrase));
+    }
+
+    /**
+     * Key for the length-header HMAC.
+     *
+     * <p>A non-empty passphrase is used as raw UTF-8 bytes, matching earlier builds.
+     * HMAC-SHA256 rejects a zero-length key, so the empty passphrase uses the
+     * PBKDF2 output of the public default walk instead of the empty byte string.
+     */
+    public static byte[] headerMacKey(String passphrase) {
+        Objects.requireNonNull(passphrase, "passphrase");
         if (passphrase.isEmpty()) {
-            throw new IllegalArgumentException("passphrase must not be empty");
+            return EmptyMacKey.BYTES.clone();
         }
+        return passphrase.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static byte[] stretch(String passphrase) {
+        if (passphrase.isEmpty()) {
+            return EmptyMacKey.BYTES.clone();
+        }
+        return pbkdf2(passphrase);
+    }
+
+    private static byte[] pbkdf2(String passphrase) {
         PBEKeySpec spec = new PBEKeySpec(
                 passphrase.toCharArray(), KDF_SALT, PBKDF2_ITERATIONS, MAC_KEY_BITS);
         try {
-            byte[] macKey = SecretKeyFactory.getInstance(KDF_ALGORITHM)
+            return SecretKeyFactory.getInstance(KDF_ALGORITHM)
                     .generateSecret(spec)
                     .getEncoded();
-            return new KeyedPrng(macKey);
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("PBKDF2-HMAC-SHA256 unavailable", e);
         } finally {
             spec.clearPassword();
         }
+    }
+
+    /** Lazy so a non-empty passphrase does not pay the empty-key stretch. */
+    private static final class EmptyMacKey {
+        static final byte[] BYTES = pbkdf2("");
     }
 
     @Override

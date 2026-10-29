@@ -15,15 +15,21 @@ final class PassphraseField extends HBox {
     private final TextField shown = new TextField();
     private final CheckBox show = new CheckBox("Show");
 
-    PassphraseField() {
+    PassphraseField(String prompt) {
         super(8);
         setAlignment(Pos.CENTER_LEFT);
-        hidden.setPromptText("Passphrase");
-        shown.setPromptText("Passphrase");
+        String text = prompt == null || prompt.isBlank() ? "Optional" : prompt;
+        hidden.setPromptText(text);
+        shown.setPromptText(text);
+        hidden.setMinWidth(0);
+        shown.setMinWidth(0);
+        hidden.setPrefColumnCount(14);
+        shown.setPrefColumnCount(14);
         hidden.setMaxWidth(Double.MAX_VALUE);
         shown.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(hidden, Priority.ALWAYS);
         HBox.setHgrow(shown, Priority.ALWAYS);
+        setMinWidth(0);
         shown.textProperty().bindBidirectional(hidden.textProperty());
         shown.setVisible(false);
         shown.setManaged(false);

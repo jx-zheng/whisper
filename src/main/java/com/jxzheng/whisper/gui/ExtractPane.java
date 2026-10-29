@@ -19,7 +19,6 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
 final class ExtractPane extends BorderPane {
@@ -28,7 +27,8 @@ final class ExtractPane extends BorderPane {
     private final StatusBar status;
     private final ImageCard imageCard = new ImageCard();
     private final TextField imageField = new TextField();
-    private final PassphraseField passphrase = new PassphraseField();
+    private final PassphraseField stegoPassphrase = new PassphraseField("Optional — blank uses the public walk");
+    private final PassphraseField encryptPassphrase = new PassphraseField("Optional — blank uses the public cipher key");
     private final CheckBox decryptBox = new CheckBox("Decrypt payload (AES-GCM)");
     private final ComboBox<String> schemeBox;
     private final ComboBox<String> cipherBox;
@@ -43,7 +43,6 @@ final class ExtractPane extends BorderPane {
     private String loaded = "";
     private byte[] payload;
     private boolean payloadIsText = true;
-    private boolean arranged;
     private boolean stacked;
 
     ExtractPane(StegoOperations operations, StatusBar status) {
@@ -73,20 +72,37 @@ final class ExtractPane extends BorderPane {
         VBox cipherField = Forms.field("Cipher", cipherBox);
         HBox.setHgrow(schemeField, Priority.ALWAYS);
         HBox.setHgrow(cipherField, Priority.ALWAYS);
-        VBox options = card("Key", new VBox(10,
-                Forms.field("Passphrase", passphrase),
+        schemeField.setMinWidth(0);
+        cipherField.setMinWidth(0);
+        VBox encryptKeyField = Forms.field("Encryption passphrase", encryptPassphrase);
+        encryptKeyField.managedProperty().bind(decryptBox.selectedProperty());
+        encryptKeyField.visibleProperty().bind(decryptBox.selectedProperty());
+        VBox options = card("Keys", new VBox(10,
+                Forms.field("Stego passphrase", stegoPassphrase),
+                Forms.hint("Pixel-walk key. Blank matches an embed that left the stego passphrase empty."),
                 decryptBox,
-                new HBox(12, schemeField, cipherField),
-                Forms.hint("Turn this on when the hidden message was encrypted before embedding. "
-                        + "The stego image itself is not ciphertext. Scheme and cipher match --scheme and --cipher.")));
-        VBox resultCard = card("Message", new VBox(8, resultMeta, result,
-                new HBox(8, saveButton)));
+                encryptKeyField,
+                schemeRow(schemeField, cipherField),
+                Forms.hint("Turn decryption on when the hidden message was encrypted before embedding. "
+                        + "The image itself is not ciphertext. The encryption passphrase is separate from "
+                        + "the stego key and is never copied from it. Blank is the public empty-string AES-GCM key. "
+                        + "Scheme and cipher match --scheme and --cipher.")));
+        result.setMinWidth(0);
+        result.setMaxHeight(Double.MAX_VALUE);
+        VBox resultBody = new VBox(8, resultMeta, result, new HBox(8, saveButton));
+        VBox.setVgrow(result, Priority.ALWAYS);
+        VBox resultCard = card("Message", resultBody);
+        VBox.setVgrow(resultBody, Priority.ALWAYS);
         HBox actions = new HBox(8, extractButton);
         actions.setAlignment(Pos.CENTER_LEFT);
         form.getChildren().addAll(options, actions, resultCard);
+        VBox.setVgrow(resultCard, Priority.ALWAYS);
+        form.setMinWidth(0);
 
         imageCard.attachPath("Stego image", imageField);
         imageColumn.getChildren().add(imageCard);
+        VBox.setVgrow(imageCard, Priority.ALWAYS);
+        imageCard.setMaxHeight(Double.MAX_VALUE);
         imageColumn.setFillWidth(true);
         Forms.wrapHints(form);
         Forms.wrapHints(imageColumn);
@@ -101,45 +117,32 @@ final class ExtractPane extends BorderPane {
         decryptBox.selectedProperty().addListener((obs, previous, on) -> cipherBox.setDisable(!on));
         extractButton.setOnAction(event -> extract());
         saveButton.setOnAction(event -> save());
-        passphrase.setOnAction(event -> extract());
+        stegoPassphrase.setOnAction(event -> extract());
+        encryptPassphrase.setOnAction(event -> extract());
 
         widthProperty().addListener((obs, previous, width) -> arrange(width.doubleValue()));
-        placeImage(false);
+        setMinWidth(0);
+        PaneLayout.apply(this, imageColumn, imageCard, form, false, 1080);
     }
 
     private void arrange(double width) {
         if (width <= 0) {
             return;
         }
-        boolean stack = width < 820;
-        if (arranged && stack == stacked) {
-            return;
-        }
-        arranged = true;
-        stacked = stack;
-        placeImage(stack);
+        stacked = PaneLayout.stacked(stacked, width);
+        PaneLayout.apply(this, imageColumn, imageCard, form, stacked, width);
     }
 
-    private void placeImage(boolean stack) {
-        if (stack) {
-            setLeft(null);
-            setTop(imageColumn);
-            imageColumn.setPrefWidth(Region.USE_COMPUTED_SIZE);
-            imageColumn.setMaxWidth(Double.MAX_VALUE);
-            BorderPane.setMargin(imageColumn, new Insets(0, 0, 16, 0));
-        } else {
-            setTop(null);
-            setLeft(imageColumn);
-            imageColumn.setPrefWidth(340);
-            imageColumn.setMaxWidth(340);
-            BorderPane.setMargin(imageColumn, new Insets(0, 16, 0, 0));
-        }
-        setCenter(form);
+    private static HBox schemeRow(VBox schemeField, VBox cipherField) {
+        HBox row = new HBox(12, schemeField, cipherField);
+        row.setMinWidth(0);
+        return row;
     }
 
-    void loadFromEmbed(Path stego, String key, boolean decrypt, String scheme, String cipher) {
+    void loadFromEmbed(Path stego, String stegoKey, String encryptKey, boolean decrypt, String scheme, String cipher) {
         imageField.setText(stego.toString());
-        passphrase.setText(key);
+        stegoPassphrase.setText(stegoKey);
+        encryptPassphrase.setText(encryptKey);
         decryptBox.setSelected(decrypt);
         if (scheme != null && !scheme.isBlank()) {
             schemeBox.setValue(scheme);
@@ -149,7 +152,8 @@ final class ExtractPane extends BorderPane {
         }
         loaded = "";
         clearResult();
-        status.show(StatusBar.Level.INFO, "Stego loaded in Extract. Passphrase and encryption settings were copied.");
+        status.show(StatusBar.Level.INFO,
+                "Stego loaded in Extract. Both passphrases and the encryption setting were copied.");
         reload(false);
     }
 
@@ -206,16 +210,13 @@ final class ExtractPane extends BorderPane {
 
     private void extract() {
         Path input = pathFrom(imageField.getText());
-        String key = passphrase.getText();
+        String stegoKey = stegoPassphrase.getText();
         boolean decrypt = decryptBox.isSelected();
+        String encryptKey = decrypt ? encryptPassphrase.getText() : null;
         String scheme = schemeBox.getValue();
         String cipher = cipherBox.getValue();
         if (input == null) {
             status.show(StatusBar.Level.ERROR, "Choose a stego image.");
-            return;
-        }
-        if (key.isEmpty()) {
-            status.show(StatusBar.Level.ERROR, "Enter a passphrase.");
             return;
         }
         clearResult();
@@ -223,7 +224,7 @@ final class ExtractPane extends BorderPane {
             @Override
             protected byte[] call() throws Exception {
                 BufferedImage image = StegoOperations.readImage(input);
-                return operations.extract(image, key, decrypt, scheme, cipher);
+                return operations.extract(image, stegoKey, decrypt, encryptKey, scheme, cipher);
             }
         }, bytes -> showPayload(bytes));
     }
