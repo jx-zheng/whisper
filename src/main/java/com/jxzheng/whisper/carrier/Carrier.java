@@ -34,6 +34,13 @@ public final class Carrier {
         return new Carrier(null, raster, encoded, format);
     }
 
+    public static Carrier encoded(byte[] encoded, String format) {
+        if (encoded == null) {
+            throw new IllegalArgumentException("encoded bytes are missing");
+        }
+        return new Carrier(null, null, encoded, format);
+    }
+
     public BufferedImage image() {
         if (image == null) {
             throw new IllegalStateException("this carrier has no BufferedImage");
@@ -58,10 +65,22 @@ public final class Carrier {
     }
 
     public int width() {
-        return image != null ? image.getWidth() : raster.width;
+        if (image != null) {
+            return image.getWidth();
+        }
+        if (raster != null) {
+            return raster.width;
+        }
+        throw new IllegalStateException("carrier has no dimensions");
     }
 
     public int height() {
-        return image != null ? image.getHeight() : raster.height;
+        if (image != null) {
+            return image.getHeight();
+        }
+        if (raster != null) {
+            return raster.height;
+        }
+        throw new IllegalStateException("carrier has no dimensions");
     }
 }

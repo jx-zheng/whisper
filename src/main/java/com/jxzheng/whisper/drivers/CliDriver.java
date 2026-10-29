@@ -16,11 +16,24 @@ import org.apache.commons.cli.ParseException;
 
 import com.jxzheng.whisper.analysis.ChiSquareAnalyzer;
 import com.jxzheng.whisper.analysis.RsAnalyzer;
+import com.jxzheng.whisper.carrier.BmpCodec;
+import com.jxzheng.whisper.carrier.JpegCoefficients;
+import com.jxzheng.whisper.carrier.PngCodec;
+import com.jxzheng.whisper.carrier.RasterImage;
+import com.jxzheng.whisper.crypto.Envelope;
+import com.jxzheng.whisper.crypto.KdfProfile;
 import com.jxzheng.whisper.media.ImageFormats;
 import com.jxzheng.whisper.ops.AnalysisFormat;
+import com.jxzheng.whisper.ops.PayloadOps;
 import com.jxzheng.whisper.ops.StegoOperations;
 import com.jxzheng.whisper.ops.StegoOperations.EmbedResult;
 import com.jxzheng.whisper.ops.StegoOperations.Report;
+import com.jxzheng.whisper.payload.ImageFit;
+import com.jxzheng.whisper.payload.MimeSniffer;
+import com.jxzheng.whisper.payload.NameSanitizer;
+import com.jxzheng.whisper.payload.PayloadKind;
+import com.jxzheng.whisper.schemes.RatePreset;
+import com.jxzheng.whisper.schemes.framing.ParityFraming;
 
 /**
  * Command-line front-end for embed, extract, and statistical analysis.
@@ -54,6 +67,7 @@ public class CliDriver {
             return switch (command) {
                 case "embed" -> runEmbed(commandArgs);
                 case "extract" -> runExtract(commandArgs);
+                case "inspect" -> runInspect(commandArgs);
                 case "analyze" -> runAnalyze(commandArgs);
                 case "help", "-h", "--help" -> {
                     printHelp();
@@ -82,6 +96,9 @@ public class CliDriver {
             return 0;
         }
 
+        if (modern(cl)) {
+            return runModernEmbed(cl);
+        }
         Path inputPath = requiredPath(cl, "input-file");
         Path outputPath = requiredPath(cl, "output-file");
         String stegoKey = stegoKey(cl);
@@ -116,6 +133,9 @@ public class CliDriver {
             return 0;
         }
 
+        if (modern(cl)) {
+            return runModernExtract(cl);
+        }
         Path inputPath = requiredPath(cl, "input-file");
         String stegoKey = stegoKey(cl);
         boolean decrypt = cl.hasOption("encrypt");
@@ -288,6 +308,243 @@ public class CliDriver {
                         + "Not copied from -k. Omitted or empty is the public empty-string cipher key. "
                         + "Omitting it with -e prints a warning.").build());
         options.addOption(Option.builder("h").longOpt("help").desc("Show usage information").build());
+        options.addOption(Option.builder().longOpt("text-file").hasArg().argName("file")
+                .desc("UTF-8 text file to hide").build());
+        options.addOption(Option.builder().longOpt("file").hasArg().argName("file")
+                .desc("Any file to hide").build());
+        options.addOption(Option.builder().longOpt("image").hasArg().argName("file")
+                .desc("Image to hide").build());
+        options.addOption(Option.builder().longOpt("fit-quality").hasArg().argName("q")
+                .desc("Re-encode a hidden image as JPEG at this quality (40-95)").build());
+        options.addOption(Option.builder().longOpt("fit-max-edge").hasArg().argName("px")
+                .desc("Longest edge of a re-encoded hidden image").build());
+        options.addOption(Option.builder().longOpt("preset").hasArg().argName("name")
+                .desc("Stealth preset: standard, low, or paranoid").build());
+        options.addOption(Option.builder().longOpt("kdf").hasArg().argName("name")
+                .desc("Argon2id profile: default or high").build());
+        options.addOption(Option.builder().longOpt("keep-metadata")
+                .desc("Keep safe metadata chunks").build());
+        options.addOption(Option.builder().longOpt("out-dir").hasArg().argName("dir")
+                .desc("Directory for an extracted file or image").build());
+        options.addOption(Option.builder().longOpt("json")
+                .desc("Print inspect results as JSON").build());
         return options;
+    }
+
+    private int runModernEmbed(CommandLine cl) throws Exception {
+        Path input = requiredPath(cl, "input-file");
+        Path output = requiredPath(cl, "output-file");
+        String scheme = cl.getOptionValue("scheme", "auto");
+        Envelope.SuiteKind suite = suite(cl);
+        if ("uerd-stc".equals(normalizeScheme(scheme, input)) || "uerd".equalsIgnoreCase(scheme) || "jpeg".equalsIgnoreCase(scheme)
+                || (scheme.equals("auto") && isJpeg(input))) {
+            String ext = ImageFormats.extensionOf(output);
+            if (!ext.equals("jpg") && !ext.equals("jpeg")) {
+                throw new IllegalArgumentException("uerd-stc writes a JPEG. Use a .jpg output path.");
+            }
+        } else {
+            ImageFormats.requireLosslessOutput(output);
+        }
+        byte[] content;
+        PayloadKind kind;
+        String name = "";
+        String mime = "";
+        boolean reencoded = false;
+        if (cl.hasOption("image")) {
+            Path image = Path.of(cl.getOptionValue("image"));
+            content = Files.readAllBytes(image);
+            kind = PayloadKind.IMAGE;
+            name = image.getFileName().toString();
+            mime = "image/png";
+            if (cl.hasOption("fit-quality") || cl.hasOption("fit-max-edge")) {
+                int quality = Integer.parseInt(cl.getOptionValue("fit-quality", "75"));
+                int edge = Integer.parseInt(cl.getOptionValue("fit-max-edge", "0"));
+                ImageFit.Result fit = ImageFit.fit(content, quality, edge);
+                content = fit.bytes();
+                reencoded = true;
+                mime = "image/jpeg";
+                name = NameSanitizer.sanitize(name, mime);
+            }
+        } else if (cl.hasOption("file")) {
+            Path file = Path.of(cl.getOptionValue("file"));
+            long size = Files.size(file);
+            if (size > 64L * 1024 * 1024) {
+                throw new IllegalArgumentException("File is larger than 64 MiB");
+            }
+            content = Files.readAllBytes(file);
+            kind = PayloadKind.FILE;
+            name = file.getFileName().toString();
+            mime = "application/octet-stream";
+        } else if (cl.hasOption("text-file") || cl.hasOption("message-file")) {
+            String flag = cl.hasOption("text-file") ? "text-file" : "message-file";
+            content = Files.readString(Path.of(cl.getOptionValue(flag))).getBytes(StandardCharsets.UTF_8);
+            kind = PayloadKind.TEXT;
+            mime = "text/plain";
+        } else if (cl.hasOption("message")) {
+            content = cl.getOptionValue("message").getBytes(StandardCharsets.UTF_8);
+            kind = PayloadKind.TEXT;
+            mime = "text/plain";
+        } else {
+            throw new IllegalArgumentException("Pass --message, --text-file, --file, or --image");
+        }
+        char[] stego = stegoKey(cl).toCharArray();
+        char[] enc = cl.hasOption("encrypt-key") ? cl.getOptionValue("encrypt-key").toCharArray() : null;
+        PayloadOps.HideRequest request = new PayloadOps.HideRequest(
+                input, output, kind, content, name, mime, scheme, suite,
+                RatePreset.fromId(cl.getOptionValue("preset", "standard")),
+                kdf(cl), stego, enc, enc != null && suite != Envelope.SuiteKind.INTEGRITY,
+                cl.hasOption("keep-metadata"), reencoded);
+        PayloadOps.Outcome outcome = new PayloadOps().hide(request);
+        System.err.println(outcome.message());
+        if (!outcome.ok()) {
+            return outcome.exitCode();
+        }
+        System.out.println("Embedded " + content.length + " byte(s) into " + output);
+        return 0;
+    }
+
+    private int runModernExtract(CommandLine cl) throws Exception {
+        Path input = requiredPath(cl, "input-file");
+        char[] stego = stegoKey(cl).toCharArray();
+        char[] enc = cl.hasOption("encrypt-key") ? cl.getOptionValue("encrypt-key").toCharArray() : null;
+        boolean split = enc != null && suite(cl) != Envelope.SuiteKind.INTEGRITY;
+        PayloadOps.Outcome outcome = new PayloadOps().reveal(
+                input, stego, enc, split, kdf(cl), cl.getOptionValue("scheme", "auto"));
+        System.err.println(outcome.message());
+        if (!outcome.ok()) {
+            return outcome.exitCode();
+        }
+        if (cl.hasOption("output-file")) {
+            Files.write(Path.of(cl.getOptionValue("output-file")), outcome.content());
+        } else if (cl.hasOption("out-dir")) {
+            String name = outcome.name() == null || outcome.name().isBlank()
+                    ? NameSanitizer.sanitize("", MimeSniffer.mime(outcome.content()))
+                    : outcome.name();
+            Files.write(Path.of(cl.getOptionValue("out-dir")).resolve(name), outcome.content());
+        } else if (outcome.kind() == PayloadKind.TEXT || outcome.legacy()) {
+            System.out.write(outcome.content());
+            System.out.println();
+        } else {
+            throw new IllegalArgumentException("Pass --out-dir or -o to save this " + outcome.kind() + " payload");
+        }
+        return 0;
+    }
+
+    private int runInspect(String[] args) throws Exception {
+        CommandLine cl = new DefaultParser().parse(options, args);
+        Path input = requiredPath(cl, "input-file");
+        byte[] file = Files.readAllBytes(input);
+        String format = PayloadOps.sniff(file);
+        boolean json = cl.hasOption("json");
+        StringBuilder out = new StringBuilder();
+        if ("jpeg".equals(format)) {
+            var jpeg = JpegCoefficients.parse(file);
+            int nz = jpeg.nzac();
+            if (json) {
+                out.append("{\"format\":\"jpeg\",\"nzac\":").append(nz).append(",\"presets\":{");
+            } else {
+                out.append("JPEG ").append(jpeg.width).append('x').append(jpeg.height)
+                        .append(" nonzero AC ").append(nz).append('\n');
+            }
+            boolean first = true;
+            for (RatePreset preset : RatePreset.values()) {
+                int bytes = ParityFraming.userBudget(nz, nz, preset.rate());
+                if (json) {
+                    if (!first) {
+                        out.append(',');
+                    }
+                    out.append('"').append(preset.name().toLowerCase(Locale.ROOT)).append("\":").append(bytes);
+                } else {
+                    out.append(preset.displayName()).append(": ").append(bytes).append(" bytes\n");
+                }
+                first = false;
+            }
+            if (json) {
+                out.append("}}");
+            }
+        } else {
+            RasterImage image = "bmp".equals(format) ? BmpCodec.read(file) : PngCodec.decode(file);
+            int pixels = image.width * image.height;
+            if (json) {
+                out.append("{\"format\":\"").append(format).append("\",\"pixels\":").append(pixels).append(",\"presets\":{");
+            } else {
+                out.append(format).append(' ').append(image.width).append('x').append(image.height).append('\n');
+            }
+            boolean first = true;
+            for (RatePreset preset : RatePreset.values()) {
+                int bytes = ParityFraming.userBudget(pixels, pixels, preset.rate());
+                if (json) {
+                    if (!first) {
+                        out.append(',');
+                    }
+                    out.append('"').append(preset.name().toLowerCase(Locale.ROOT)).append("\":").append(bytes);
+                } else {
+                    out.append(preset.displayName()).append(": ").append(bytes).append(" bytes\n");
+                }
+                first = false;
+            }
+            if (json) {
+                out.append("}}");
+            }
+        }
+        System.out.print(out);
+        if (!json) {
+            System.out.print("");
+        } else {
+            System.out.println();
+        }
+        return 0;
+    }
+
+    private static boolean modern(CommandLine cl) {
+        if (cl.hasOption("file") || cl.hasOption("image") || cl.hasOption("text-file")
+                || cl.hasOption("preset") || cl.hasOption("kdf") || cl.hasOption("keep-metadata")) {
+            return true;
+        }
+        String scheme = cl.getOptionValue("scheme");
+        if (scheme != null) {
+            String name = scheme.toLowerCase(Locale.ROOT);
+            if (name.equals("hill-stc") || name.equals("uerd-stc") || name.equals("auto")
+                    || name.equals("hill") || name.equals("uerd")) {
+                return true;
+            }
+        }
+        String cipher = cl.getOptionValue("cipher");
+        if (cipher != null) {
+            String name = cipher.toLowerCase(Locale.ROOT);
+            return name.equals("chacha20-poly1305") || name.equals("aes-256-gcm") || name.equals("none");
+        }
+        return false;
+    }
+
+    private static Envelope.SuiteKind suite(CommandLine cl) {
+        String cipher = cl.getOptionValue("cipher", "chacha20-poly1305");
+        return switch (cipher.toLowerCase(Locale.ROOT)) {
+            case "aes-256-gcm", "aes256", "aes-gcm" -> Envelope.SuiteKind.AES;
+            case "none", "integrity" -> Envelope.SuiteKind.INTEGRITY;
+            case "chacha20-poly1305", "chacha" -> Envelope.SuiteKind.CHACHA;
+            default -> throw new IllegalArgumentException("Unsupported cipher: " + cipher);
+        };
+    }
+
+    private static KdfProfile kdf(CommandLine cl) {
+        return KdfProfile.fromId(cl.getOptionValue("kdf", "default"));
+    }
+
+    private static boolean isJpeg(Path path) throws java.io.IOException {
+        byte[] prefix = new byte[3];
+        try (var in = Files.newInputStream(path)) {
+            if (in.read(prefix) < 3) {
+                return false;
+            }
+        }
+        return (prefix[0] & 0xff) == 0xff && (prefix[1] & 0xff) == 0xd8;
+    }
+
+    private static String normalizeScheme(String scheme, Path input) throws java.io.IOException {
+        if (scheme == null || scheme.isBlank() || scheme.equalsIgnoreCase("auto")) {
+            return isJpeg(input) ? "uerd-stc" : "hill-stc";
+        }
+        return scheme.toLowerCase(Locale.ROOT);
     }
 }

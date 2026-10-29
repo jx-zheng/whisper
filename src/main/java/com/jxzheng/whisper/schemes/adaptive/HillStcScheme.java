@@ -109,7 +109,7 @@ public final class HillStcScheme implements StegoScheme {
         throw new IllegalArgumentException("hill-stc needs a decoded PNG or BMP raster");
     }
 
-    static Plane plane(RasterImage image) {
+    public static Plane plane(RasterImage image) {
         int spp = image.spp();
         if (spp == 0) {
             throw new IllegalArgumentException("png: bad color type");
@@ -152,6 +152,6 @@ public final class HillStcScheme implements StegoScheme {
         return out;
     }
 
-    record Plane(byte[] pixels, int[] samples) {
+    public record Plane(byte[] pixels, int[] samples) {
     }
 }
