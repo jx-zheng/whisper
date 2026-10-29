@@ -102,10 +102,7 @@ public final class WhisperApp extends Application {
         stage.setScene(scene);
         stage.setMinWidth(MIN_WIDTH);
         stage.setMinHeight(MIN_HEIGHT);
-        var icon = WhisperApp.class.getResource("icon.png");
-        if (icon != null) {
-            stage.getIcons().add(new Image(icon.toExternalForm()));
-        }
+        installIcons(stage);
         Rectangle2D bounds = Screen.getPrimary().getVisualBounds();
         stage.setWidth(Math.min(PREFERRED_WIDTH, Math.max(MIN_WIDTH, bounds.getWidth() - 48)));
         stage.setHeight(Math.min(PREFERRED_HEIGHT, Math.max(MIN_HEIGHT, bounds.getHeight() - 64)));
@@ -116,12 +113,16 @@ public final class WhisperApp extends Application {
 
     private VBox header(ToggleGroup modes, ToggleButton embed, ToggleButton extract, ToggleButton analyze) {
         ImageView mark = new ImageView();
-        var icon = WhisperApp.class.getResource("icon.png");
+        // Waves and a light frame. The charcoal tile disappears on the dark header.
+        var icon = WhisperApp.class.getResource("icon-header.png");
         if (icon != null) {
-            mark.setImage(new Image(icon.toExternalForm(), 32, 32, true, true));
+            // Decode above the CSS size so the mark stays sharp on high-DPI screens.
+            mark.setImage(new Image(icon.toExternalForm(), 144, 144, true, true, false));
         }
-        mark.setFitWidth(32);
-        mark.setFitHeight(32);
+        mark.setFitWidth(36);
+        mark.setFitHeight(36);
+        mark.setPreserveRatio(true);
+        mark.setSmooth(true);
         Label title = new Label("whisper");
         title.getStyleClass().add("brand-title");
         Label subtitle = new Label("Adaptive steganography for images");
@@ -139,6 +140,26 @@ public final class WhisperApp extends Application {
         modesBar.getStyleClass().add("mode-bar");
         modesBar.setPadding(new Insets(0, 12, 0, 12));
         return new VBox(brand, modesBar);
+    }
+
+    /**
+     * Largest first. JavaFX picks the closest size for the title bar, taskbar, and dock.
+     * These stay the charcoal squircle. The header uses {@code icon-header.png} instead.
+     */
+    private static void installIcons(Stage stage) {
+        for (String name : new String[] {
+                "icon.png",
+                "icon-256.png",
+                "icon-128.png",
+                "icon-64.png",
+                "icon-48.png",
+                "icon-32.png",
+                "icon-16.png"}) {
+            var url = WhisperApp.class.getResource(name);
+            if (url != null) {
+                stage.getIcons().add(new Image(url.toExternalForm(), false));
+            }
+        }
     }
 
     private static ToggleButton modeButton(String text, ToggleGroup group) {
