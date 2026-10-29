@@ -1,0 +1,335 @@
+{
+  "generated": "2026-10-29",
+  "note": "URLs actually fetched (WebFetch/curl/pdf) or verified via WebSearch+API this session. status: fetched | verified_meta | api_checked",
+  "sources": [
+    {
+      "id": "stc-paper-pdf",
+      "title": "Minimizing Additive Distortion in Steganography Using Syndrome-Trellis Codes (PDF)",
+      "url": "https://dde.binghamton.edu/filler/pdf/Fill10tifs-stc.pdf",
+      "status": "fetched",
+      "used_in": ["01", "03"]
+    },
+    {
+      "id": "stc-ieee",
+      "title": "STC IEEE TIFS DOI",
+      "url": "https://doi.org/10.1109/tifs.2011.2134094",
+      "status": "verified_meta",
+      "used_in": ["01"]
+    },
+    {
+      "id": "stc-toolbox",
+      "title": "Syndrome Trellis Codes Toolbox (Binghamton)",
+      "url": "http://dde.binghamton.edu/download/syndrome/",
+      "status": "fetched",
+      "used_in": ["01", "06"]
+    },
+    {
+      "id": "uniward-pdf",
+      "title": "Universal distortion function for steganography in an arbitrary domain (PDF)",
+      "url": "https://dde.binghamton.edu/vholub/pdf/EURASIP14_Universal_Distortion_Function_for_Steganography_in_an_Arbitrary_Domain.pdf",
+      "status": "fetched",
+      "used_in": ["01"]
+    },
+    {
+      "id": "uniward-springer",
+      "title": "UNIWARD EURASIP Journal page",
+      "url": "https://link.springer.com/article/10.1186/1687-417X-2014-1",
+      "status": "fetched",
+      "used_in": ["01"]
+    },
+    {
+      "id": "suniward-streaking",
+      "title": "Further study on the security of S-UNIWARD (SPIE)",
+      "url": "https://doi.org/10.1117/12.2044803",
+      "status": "verified_meta",
+      "used_in": ["01"]
+    },
+    {
+      "id": "hill-icip",
+      "title": "A new cost function for spatial image steganography (HILL)",
+      "url": "https://doi.org/10.1109/icip.2014.7025854",
+      "status": "verified_meta",
+      "used_in": ["01", "03"]
+    },
+    {
+      "id": "conseal-github",
+      "title": "uibk-uncover/conseal",
+      "url": "https://github.com/uibk-uncover/conseal",
+      "status": "fetched",
+      "used_in": ["01", "06"]
+    },
+    {
+      "id": "conseal-blog",
+      "title": "JPEG steganography in Python with Conseal (Lorch)",
+      "url": "https://www.benediktlorch.com/blog/2023/conseal/",
+      "status": "verified_meta",
+      "used_in": ["01"]
+    },
+    {
+      "id": "steganogan-arxiv",
+      "title": "SteganoGAN arXiv 1901.03892",
+      "url": "https://arxiv.org/abs/1901.03892",
+      "status": "fetched",
+      "used_in": ["01", "00"]
+    },
+    {
+      "id": "steganogan-github",
+      "title": "DAI-Lab/SteganoGAN",
+      "url": "https://github.com/DAI-Lab/SteganoGAN",
+      "status": "api_checked",
+      "used_in": ["01", "06"]
+    },
+    {
+      "id": "hinet-paper",
+      "title": "HiNet ICCV 2021 open access",
+      "url": "https://openaccess.thecvf.com/content/ICCV2021/html/Jing_HiNet_Deep_Image_Hiding_by_Invertible_Network_ICCV_2021_paper.html",
+      "status": "verified_meta",
+      "used_in": ["01"]
+    },
+    {
+      "id": "hinet-github",
+      "title": "TomTomTommi/HiNet",
+      "url": "https://github.com/TomTomTommi/HiNet",
+      "status": "api_checked",
+      "used_in": ["01"]
+    },
+    {
+      "id": "isn-paper",
+      "title": "ISN CVPR 2021 open access",
+      "url": "https://openaccess.thecvf.com/content/CVPR2021/html/Lu_Large-Capacity_Image_Steganography_Based_on_Invertible_Neural_Networks_CVPR_2021_paper.html",
+      "status": "verified_meta",
+      "used_in": ["01"]
+    },
+    {
+      "id": "pris-arxiv",
+      "title": "PRIS arXiv 2309.13620",
+      "url": "https://arxiv.org/abs/2309.13620",
+      "status": "fetched",
+      "used_in": ["01", "00"]
+    },
+    {
+      "id": "pris-github",
+      "title": "yanghangAI/PRIS",
+      "url": "https://github.com/yanghangAI/PRIS",
+      "status": "api_checked",
+      "used_in": ["01"]
+    },
+    {
+      "id": "cif-arxiv",
+      "title": "CIF constrained inversion for diffusion stego arXiv 2508.00434",
+      "url": "https://arxiv.org/abs/2508.00434",
+      "status": "fetched",
+      "used_in": ["01", "00"]
+    },
+    {
+      "id": "pulsar-eprint",
+      "title": "Pulsar: Secure Steganography for Diffusion Models",
+      "url": "https://eprint.iacr.org/2023/1758",
+      "status": "verified_meta",
+      "used_in": ["01"]
+    },
+    {
+      "id": "pulsar-github",
+      "title": "spacelab-ccny/pulsar",
+      "url": "https://github.com/spacelab-ccny/pulsar",
+      "status": "api_checked",
+      "used_in": ["01", "06"]
+    },
+    {
+      "id": "butora-robust-jpeg",
+      "title": "Errorless Robust JPEG Steganography arXiv 2211.04750",
+      "url": "https://arxiv.org/abs/2211.04750",
+      "status": "fetched",
+      "used_in": ["01", "03"]
+    },
+    {
+      "id": "srnet-pdf",
+      "title": "SRNet Deep Residual Network for Steganalysis (PDF)",
+      "url": "https://ws2.binghamton.edu/fridrich/Research/SRNet.pdf",
+      "status": "fetched",
+      "used_in": ["01"]
+    },
+    {
+      "id": "adv-emb-arxiv",
+      "title": "CNN Based Adversarial Embedding arXiv 1803.09043",
+      "url": "https://arxiv.org/abs/1803.09043",
+      "status": "verified_meta",
+      "used_in": ["01"]
+    },
+    {
+      "id": "meteor-eprint",
+      "title": "Meteor CCS 2021 ePrint",
+      "url": "https://eprint.iacr.org/2021/686",
+      "status": "verified_meta",
+      "used_in": ["01"]
+    },
+    {
+      "id": "discop-site",
+      "title": "Discop S&P 2023 project page",
+      "url": "https://ding.ac.cn/publication/sp23_discop/",
+      "status": "verified_meta",
+      "used_in": ["01"]
+    },
+    {
+      "id": "discop-github",
+      "title": "comydream/Discop",
+      "url": "https://github.com/comydream/Discop",
+      "status": "api_checked",
+      "used_in": ["01"]
+    },
+    {
+      "id": "pdf-stego-arxiv",
+      "title": "Hiding Sensitive Information Using PDF Steganography",
+      "url": "https://arxiv.org/html/2405.00865",
+      "status": "verified_meta",
+      "used_in": ["01"]
+    },
+    {
+      "id": "audio-gaie",
+      "title": "GAIE_MAS audio steganography TIFS 2024",
+      "url": "https://doi.org/10.1109/tifs.2024.3417268",
+      "status": "verified_meta",
+      "used_in": ["01"]
+    },
+    {
+      "id": "rfc9106",
+      "title": "RFC 9106 Argon2",
+      "url": "https://www.rfc-editor.org/rfc/rfc9106.txt",
+      "status": "fetched",
+      "used_in": ["02", "00"]
+    },
+    {
+      "id": "c2sp-age",
+      "title": "C2SP age.md specification",
+      "url": "https://raw.githubusercontent.com/C2SP/C2SP/main/age.md",
+      "status": "fetched",
+      "used_in": ["02"]
+    },
+    {
+      "id": "wails-changelog",
+      "title": "Wails v3 changelog",
+      "url": "https://v3.wails.io/changelog/",
+      "status": "fetched",
+      "used_in": ["05", "00"]
+    },
+    {
+      "id": "wails-status",
+      "title": "Wails roadmap / status",
+      "url": "https://wails.io/status/",
+      "status": "verified_meta",
+      "used_in": ["05"]
+    },
+    {
+      "id": "wails-pkg",
+      "title": "pkg.go.dev wails/v3",
+      "url": "https://pkg.go.dev/github.com/wailsapp/wails/v3",
+      "status": "fetched",
+      "used_in": ["05"]
+    },
+    {
+      "id": "fyne-260",
+      "title": "Fyne v2.6.0 release",
+      "url": "https://github.com/fyne-io/fyne/releases/tag/v2.6.0",
+      "status": "verified_meta",
+      "used_in": ["05"]
+    },
+    {
+      "id": "fyne-270",
+      "title": "Fyne v2.7.0 release",
+      "url": "https://github.com/fyne-io/fyne/releases/tag/v2.7.0",
+      "status": "verified_meta",
+      "used_in": ["05"]
+    },
+    {
+      "id": "fyne-changelog",
+      "title": "Fyne CHANGELOG (includes 2.8.0)",
+      "url": "https://github.com/fyne-io/fyne/blob/master/CHANGELOG.md",
+      "status": "verified_meta",
+      "used_in": ["05"]
+    },
+    {
+      "id": "jsteg-readme",
+      "title": "lukechampine/jsteg README",
+      "url": "https://raw.githubusercontent.com/lukechampine/jsteg/master/README.md",
+      "status": "fetched",
+      "used_in": ["01", "06"]
+    },
+    {
+      "id": "stegify-readme",
+      "title": "DimitarPetrov/stegify README",
+      "url": "https://raw.githubusercontent.com/DimitarPetrov/stegify/master/README.md",
+      "status": "fetched",
+      "used_in": ["01", "06"]
+    },
+    {
+      "id": "auyer-readme",
+      "title": "auyer/steganography README",
+      "url": "https://raw.githubusercontent.com/auyer/steganography/main/README.md",
+      "status": "fetched",
+      "used_in": ["01", "06"]
+    },
+    {
+      "id": "pystc-github",
+      "title": "daniellerch/pySTC",
+      "url": "https://github.com/daniellerch/pySTC",
+      "status": "fetched",
+      "used_in": ["01", "06"]
+    },
+    {
+      "id": "stenoxide-readme",
+      "title": "stenoxide README (architecture reference)",
+      "url": "https://raw.githubusercontent.com/stenoxide/stenoxide/main/README.md",
+      "status": "fetched",
+      "used_in": ["01", "02", "03", "06"]
+    },
+    {
+      "id": "stegseek-readme",
+      "title": "RickdeJager/stegseek README",
+      "url": "https://raw.githubusercontent.com/RickdeJager/stegseek/master/README.md",
+      "status": "fetched",
+      "used_in": ["01", "02"]
+    },
+    {
+      "id": "overkilll-jpeg",
+      "title": "pkg.go.dev github.com/0verkilll/jpeg",
+      "url": "https://pkg.go.dev/github.com/0verkilll/jpeg",
+      "status": "fetched",
+      "used_in": ["03", "06"]
+    },
+    {
+      "id": "x-crypto-argon2",
+      "title": "pkg.go.dev golang.org/x/crypto/argon2",
+      "url": "https://pkg.go.dev/golang.org/x/crypto/argon2",
+      "status": "fetched",
+      "used_in": ["02", "06"]
+    },
+    {
+      "id": "go-png-writer",
+      "title": "Go src/image/png/writer.go (IDAT 32KiB)",
+      "url": "https://raw.githubusercontent.com/golang/go/master/src/image/png/writer.go",
+      "status": "fetched",
+      "used_in": ["01", "03"]
+    },
+    {
+      "id": "go126-secret",
+      "title": "runtime/secret package docs",
+      "url": "https://pkg.go.dev/runtime/secret",
+      "status": "verified_meta",
+      "used_in": ["02"]
+    },
+    {
+      "id": "go-dl-json",
+      "title": "Go download JSON (current stables)",
+      "url": "https://go.dev/dl/?mode=json",
+      "status": "fetched",
+      "used_in": ["00"]
+    },
+    {
+      "id": "whisper2-repo",
+      "title": "Target empty private repo",
+      "url": "https://github.com/jx-zheng/Whisper2",
+      "status": "verified_meta",
+      "used_in": ["00", "07"]
+    }
+  ]
+}
