@@ -1,0 +1,393 @@
+.root.theme-light {
+    -whisper-bg: #eef0f4;
+    -whisper-header: #fbfbfc;
+    -whisper-surface: #ffffff;
+    -whisper-field: #f5f6f8;
+    -whisper-line: #e1e4ea;
+    -whisper-text: #1a1d24;
+    -whisper-muted: #5e6778;
+    -whisper-faint: #8b93a3;
+    -whisper-accent: #3d56d6;
+    -whisper-accent-strong: #3d56d6;
+    -whisper-accent-hover: #3148c0;
+    -whisper-accent-soft: #e7ebfb;
+    -whisper-ok: #0e7a52;
+    -whisper-warn: #8a5a00;
+    -whisper-warn-soft: #fff1d6;
+    -whisper-danger: #b42318;
+    -fx-background-color: -whisper-bg;
+}
+
+.root.theme-dark {
+    -whisper-bg: #101218;
+    -whisper-header: #161922;
+    -whisper-surface: #1c2030;
+    -whisper-field: #12151e;
+    -whisper-line: #2e3446;
+    -whisper-text: #e8eaf0;
+    -whisper-muted: #a3abc0;
+    -whisper-faint: #6f778a;
+    -whisper-accent: #9aafff;
+    -whisper-accent-strong: #5b78f0;
+    -whisper-accent-hover: #7590ff;
+    -whisper-accent-soft: #2a3354;
+    -whisper-ok: #5ddeaf;
+    -whisper-warn: #f0c36a;
+    -whisper-warn-soft: #3a311c;
+    -whisper-danger: #ff9b94;
+    -fx-background-color: -whisper-bg;
+}
+
+.root {
+    -fx-font-size: 13px;
+    -fx-focus-color: -whisper-accent-strong;
+    -fx-faint-focus-color: transparent;
+}
+
+.label {
+    -fx-text-fill: -whisper-text;
+}
+
+.hint {
+    -fx-text-fill: -whisper-muted;
+    -fx-font-size: 12px;
+}
+
+.field-label {
+    -fx-text-fill: -whisper-muted;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+}
+
+.card-title {
+    -fx-text-fill: -whisper-text;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.brand-title {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -whisper-text;
+}
+
+.header {
+    -fx-background-color: -whisper-header;
+    -fx-padding: 14 18 10 18;
+    -fx-border-color: transparent transparent -whisper-line transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.mode-bar {
+    -fx-background-color: -whisper-header;
+    -fx-padding: 0 8 0 8;
+    -fx-border-color: transparent transparent -whisper-line transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.toggle-button.mode,
+.toggle-button.mode:hover,
+.toggle-button.mode:armed,
+.toggle-button.mode:selected {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+    -fx-border-color: transparent;
+    -fx-border-width: 0 0 2 0;
+    -fx-text-fill: -whisper-muted;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-padding: 10 14 8 14;
+    -fx-cursor: hand;
+}
+
+.toggle-button.mode:hover {
+    -fx-text-fill: -whisper-text;
+}
+
+.toggle-button.mode:selected {
+    -fx-text-fill: -whisper-text;
+    -fx-border-color: transparent transparent -whisper-accent-strong transparent;
+}
+
+.card {
+    -fx-background-color: -whisper-surface;
+    -fx-background-radius: 12;
+    -fx-border-color: -whisper-line;
+    -fx-border-radius: 12;
+    -fx-border-width: 1;
+    -fx-padding: 14;
+    -fx-effect: dropshadow(gaussian, rgba(16, 24, 40, 0.05), 16, 0.15, 0, 2);
+}
+
+.theme-dark .card {
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.35), 18, 0.2, 0, 2);
+}
+
+.preview-frame {
+    -fx-background-color: -whisper-field;
+    -fx-background-radius: 10;
+    -fx-border-color: -whisper-line;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-padding: 8;
+}
+
+.preview-frame.drag-over {
+    -fx-border-color: -whisper-accent-strong;
+    -fx-background-color: -whisper-accent-soft;
+}
+
+.text-field, .text-area, .password-field {
+    -fx-background-color: -whisper-field;
+    -fx-background-insets: 0;
+    -fx-background-radius: 8;
+    -fx-border-color: -whisper-line;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+    -fx-text-fill: -whisper-text;
+    -fx-prompt-text-fill: -whisper-faint;
+    -fx-padding: 8 10;
+    -fx-highlight-fill: -whisper-accent-soft;
+    -fx-highlight-text-fill: -whisper-text;
+}
+
+.text-area .content {
+    -fx-background-color: -whisper-field;
+    -fx-background-radius: 6;
+}
+
+.text-field:focused, .text-area:focused, .password-field:focused, .combo-box:focused {
+    -fx-border-color: -whisper-accent-strong;
+    -fx-background-insets: 0;
+}
+
+.combo-box {
+    -fx-background-color: -whisper-field;
+    -fx-background-insets: 0;
+    -fx-background-radius: 8;
+    -fx-border-color: -whisper-line;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+    -fx-padding: 1 0 1 0;
+}
+
+.combo-box .list-cell {
+    -fx-text-fill: -whisper-text;
+    -fx-background-color: transparent;
+    -fx-padding: 4 8;
+}
+
+.combo-box .arrow-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0 8 0 4;
+}
+
+.combo-box .arrow {
+    -fx-background-color: -whisper-muted;
+}
+
+.combo-box-popup .list-view {
+    -fx-background-color: -whisper-surface;
+    -fx-border-color: -whisper-line;
+    -fx-background-insets: 0;
+}
+
+.combo-box-popup .list-cell {
+    -fx-text-fill: -whisper-text;
+    -fx-background-color: -whisper-surface;
+    -fx-padding: 6 10;
+}
+
+.combo-box-popup .list-cell:hover,
+.combo-box-popup .list-cell:selected {
+    -fx-background-color: -whisper-accent-soft;
+    -fx-text-fill: -whisper-text;
+}
+
+.button {
+    -fx-background-color: -whisper-field;
+    -fx-background-insets: 0;
+    -fx-background-radius: 8;
+    -fx-border-color: -whisper-line;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+    -fx-text-fill: -whisper-text;
+    -fx-padding: 7 12;
+    -fx-cursor: hand;
+    -fx-font-size: 13px;
+}
+
+.button:hover {
+    -fx-border-color: -whisper-accent;
+}
+
+.button:focused {
+    -fx-border-color: -whisper-accent-strong;
+    -fx-background-insets: 0;
+}
+
+.button.primary {
+    -fx-background-color: -whisper-accent-strong;
+    -fx-text-fill: white;
+    -fx-border-color: transparent;
+    -fx-font-weight: bold;
+    -fx-padding: 8 16;
+}
+
+.button.primary:hover,
+.button.primary:focused {
+    -fx-background-color: -whisper-accent-hover;
+    -fx-text-fill: white;
+    -fx-border-color: transparent;
+}
+
+.button:disabled, .toggle-button:disabled {
+    -fx-opacity: 0.55;
+}
+
+.check-box, .radio-button {
+    -fx-text-fill: -whisper-text;
+    -fx-padding: 2 0 2 0;
+}
+
+.check-box .box {
+    -fx-background-color: -whisper-field;
+    -fx-border-color: -whisper-line;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-border-width: 1;
+}
+
+.check-box:selected .box {
+    -fx-background-color: -whisper-accent-strong;
+    -fx-border-color: -whisper-accent-strong;
+}
+
+.check-box:selected .mark {
+    -fx-background-color: white;
+}
+
+.radio-button .radio {
+    -fx-background-color: -whisper-field;
+    -fx-border-color: -whisper-muted;
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+    -fx-border-width: 1;
+}
+
+.radio-button:selected .radio {
+    -fx-border-color: -whisper-accent-strong;
+}
+
+.radio-button:selected .dot {
+    -fx-background-color: -whisper-accent-strong;
+}
+
+.scroll-pane.pane-scroll {
+    -fx-background-color: -whisper-bg;
+    -fx-background: -whisper-bg;
+    -fx-border-color: transparent;
+    -fx-padding: 0;
+}
+
+.scroll-pane.pane-scroll > .viewport {
+    -fx-background-color: -whisper-bg;
+}
+
+.scroll-bar {
+    -fx-background-color: transparent;
+}
+
+.scroll-bar .thumb {
+    -fx-background-color: -whisper-line;
+    -fx-background-radius: 6;
+    -fx-background-insets: 2;
+}
+
+.scroll-bar .track,
+.scroll-bar .increment-button,
+.scroll-bar .decrement-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.status-bar {
+    -fx-background-color: -whisper-header;
+    -fx-border-color: -whisper-line transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+    -fx-padding: 8 16;
+    -fx-alignment: center-left;
+    -fx-min-height: 36;
+}
+
+.status-dot {
+    -fx-background-radius: 8;
+    -fx-min-width: 8;
+    -fx-min-height: 8;
+    -fx-max-width: 8;
+    -fx-max-height: 8;
+    -fx-pref-width: 8;
+    -fx-pref-height: 8;
+}
+
+.status-info .status-dot {
+    -fx-background-color: -whisper-muted;
+}
+
+.status-success .status-dot {
+    -fx-background-color: -whisper-ok;
+}
+
+.status-warning .status-dot {
+    -fx-background-color: -whisper-warn;
+}
+
+.status-error .status-dot {
+    -fx-background-color: -whisper-danger;
+}
+
+.status-success .label {
+    -fx-text-fill: -whisper-text;
+}
+
+.warn {
+    -fx-text-fill: -whisper-warn;
+    -fx-font-size: 12px;
+}
+
+.metric-value {
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -whisper-text;
+}
+
+.metric-caption {
+    -fx-font-size: 11px;
+    -fx-text-fill: -whisper-muted;
+}
+
+.badge {
+    -fx-padding: 3 8 3 8;
+    -fx-background-radius: 99;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+}
+
+.badge-neutral {
+    -fx-background-color: -whisper-field;
+    -fx-text-fill: -whisper-muted;
+}
+
+.badge-alert {
+    -fx-background-color: -whisper-warn-soft;
+    -fx-text-fill: -whisper-warn;
+}
+
+.progress-indicator {
+    -fx-progress-color: -whisper-accent-strong;
+}
+
+.progress-indicator .spinner {
+    -fx-padding: 0;
+}
