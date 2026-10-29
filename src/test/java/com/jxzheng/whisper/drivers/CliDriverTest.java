@@ -289,9 +289,54 @@ class CliDriverTest {
             assertEquals(2, new CliDriver().run(new String[] {
                     "extract", "-i", stego.toString(), "-k", "legacy-stego-key"
             }));
-            assertTrue(error.stderr().contains("encryption passphrase"));
+            assertTrue(error.stderr().contains("Ciphertext is not shown"), error.stderr());
             assertTrue(error.stdout().isEmpty());
             assertFalse(error.stderr().contains("legacy-encrypted-v0.9"));
+        }
+    }
+
+    @Test
+    void legacyAesFlagIsAcceptedOnExtract(@TempDir Path dir) throws Exception {
+        Path stego = Path.of(CliDriverTest.class.getResource("/fixtures/legacy/zhang-tang-aes.png").toURI());
+        Path out = dir.resolve("out.txt");
+        assertEquals(0, new CliDriver().run(new String[] {
+                "extract", "-i", stego.toString(), "-k", "legacy-stego-key",
+                "-c", "aes", "-E", "legacy-enc-key", "-o", out.toString()
+        }));
+        assertEquals("legacy-encrypted-v0.9", Files.readString(out));
+    }
+
+    @Test
+    void legacyEmptyKeyFollowsEncryptFlag(@TempDir Path dir) throws Exception {
+        Path cover = dir.resolve("cover.png");
+        Path stego = dir.resolve("stego.png");
+        ImageIO.write(noise(80, 80), "png", cover.toFile());
+        var embedded = new com.jxzheng.whisper.ops.StegoOperations().embed(
+                com.jxzheng.whisper.ops.StegoOperations.readImage(cover),
+                "empty-aes".getBytes(StandardCharsets.UTF_8),
+                "walk", true, "", "zhang-tang", "aes");
+        ImageIO.write(embedded.image(), "png", stego.toFile());
+        Path out = dir.resolve("out.txt");
+        try (Capture note = Capture.of()) {
+            assertEquals(0, new CliDriver().run(new String[] {
+                    "extract", "-i", stego.toString(), "-k", "walk", "-e", "-o", out.toString()
+            }));
+            assertTrue(note.stderr().contains("AES-GCM tag OK"), note.stderr());
+        }
+        assertEquals("empty-aes", Files.readString(out));
+    }
+
+    @Test
+    void zhangTangEmbedIsRejected(@TempDir Path dir) throws Exception {
+        Path cover = dir.resolve("cover.png");
+        Path stego = dir.resolve("stego.png");
+        ImageIO.write(noise(32, 32), "png", cover.toFile());
+        try (Capture error = Capture.of()) {
+            assertEquals(1, new CliDriver().run(new String[] {
+                    "embed", "-i", cover.toString(), "-o", stego.toString(),
+                    "-m", "hi", "-k", "k", "-s", "zhang-tang", "--kdf", "test"
+            }));
+            assertTrue(error.stderr().contains("decrypt-only"));
         }
     }
 
@@ -304,6 +349,7 @@ class CliDriverTest {
             assertTrue(text.contains("PNG or BMP"));
             assertTrue(text.contains("encrypt-key"));
             assertFalse(text.contains("also used as cipher"));
+            assertFalse(text.contains("inspect"));
             assertFalse(text.contains("gui"));
             assertFalse(text.contains("<<<<<<<"));
             assertFalse(text.contains(">>>>>>>"));

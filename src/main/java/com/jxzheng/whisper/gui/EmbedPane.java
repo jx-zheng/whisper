@@ -138,6 +138,7 @@ final class EmbedPane extends BorderPane {
                     : "Drop any file, or type a path");
             fitBox.setVisible(selected == imageKind);
             fitBox.setManaged(selected == imageKind);
+            recomputeCapacity();
         });
         fitBox.setVisible(false);
         fitBox.setManaged(false);
@@ -222,7 +223,10 @@ final class EmbedPane extends BorderPane {
             }
         });
         messageArea.textProperty().addListener((obs, previous, next) -> refreshSize());
-        messageFileField.textProperty().addListener((obs, previous, next) -> refreshSize());
+        messageFileField.textProperty().addListener((obs, previous, next) -> {
+            recomputeCapacity();
+            refreshSize();
+        });
         encryptBox.selectedProperty().addListener((obs, previous, on) -> {
             refreshSize();
             refreshKeyWarning();
@@ -403,7 +407,11 @@ final class EmbedPane extends BorderPane {
         String encryptKey = encrypt ? encryptPassphrase.getText() : null;
         String scheme = schemeBox.getValue();
         String cipher = cipherBox.getValue();
-        boolean fromFile = !textKind.isSelected();
+        boolean text = textKind.isSelected();
+        boolean image = imageKind.isSelected();
+        boolean fit = fitBox.isSelected();
+        String preset = presetBox.getValue();
+        boolean fromFile = !text;
         String messageText = messageArea.getText() == null ? "" : messageArea.getText();
         Path messageFile = pathFrom(messageFileField.getText());
 
@@ -438,8 +446,9 @@ final class EmbedPane extends BorderPane {
         status.run("Embedding…", new Task<EmbedDone>() {
             @Override
             protected EmbedDone call() throws Exception {
-                return embedModern(
-                        cover, output, stegoKey, encryptKey, scheme, cipher, fromFile, messageText, messageFile, shownCapacity);
+                return embedModern(new EmbedJob(
+                        cover, output, stegoKey, encryptKey, encrypt, scheme, cipher, text, image, fit,
+                        fromFile, messageText, messageFile, preset, shownCapacity));
             }
         }, done -> {
             loadGeneration++;
@@ -468,54 +477,49 @@ final class EmbedPane extends BorderPane {
         });
     }
 
-    private EmbedDone embedModern(
-            Path cover, Path output, String stegoKey, String encryptKey, String scheme, String cipher,
-            boolean fromFile, String messageText, Path messageFile, int shownCapacity) throws Exception {
+    private EmbedDone embedModern(EmbedJob job) throws Exception {
         byte[] content;
         PayloadKind kind;
         String name = "";
         String mime = "text/plain";
         boolean reencoded = false;
-        if (imageKind.isSelected()) {
+        if (job.image()) {
             kind = PayloadKind.IMAGE;
-            content = Files.readAllBytes(messageFile);
-            name = messageFile.getFileName() == null ? "image" : messageFile.getFileName().toString();
+            content = Files.readAllBytes(job.messageFile());
+            name = job.messageFile().getFileName() == null ? "image" : job.messageFile().getFileName().toString();
             mime = "image/png";
-            if (fitBox.isSelected()) {
+            if (job.fit()) {
                 ImageFit.Result fit = ImageFit.fit(content, 75, 1024);
                 content = fit.bytes();
                 reencoded = true;
                 mime = "image/jpeg";
             }
-        } else if (fromFile) {
+        } else if (job.fromFile()) {
             kind = PayloadKind.FILE;
-            content = Files.readAllBytes(messageFile);
-            name = messageFile.getFileName() == null ? "file" : messageFile.getFileName().toString();
+            content = Files.readAllBytes(job.messageFile());
+            name = job.messageFile().getFileName() == null ? "file" : job.messageFile().getFileName().toString();
             mime = "application/octet-stream";
         } else {
             kind = PayloadKind.TEXT;
-            content = messageText.getBytes(StandardCharsets.UTF_8);
+            content = job.messageText().getBytes(StandardCharsets.UTF_8);
         }
-        boolean encrypting = !"none".equals(cipher);
-        Envelope.SuiteKind suite = switch (cipher == null ? "" : cipher) {
-            case "aes-256-gcm" -> Envelope.SuiteKind.AES;
-            case "none" -> Envelope.SuiteKind.INTEGRITY;
-            default -> Envelope.SuiteKind.CHACHA;
-        };
+        String cipherId = CipherRegistry.shared().canonical(job.cipher());
+        Envelope.SuiteKind suite = CipherRegistry.suite(cipherId);
+        boolean separate = job.separate();
         var outcome = new PayloadOps().hide(new PayloadOps.HideRequest(
-                cover, output, kind, content, name, mime, scheme, suite,
-                RatePreset.fromId(presetBox.getValue()), KdfProfile.DEFAULT,
-                stegoKey.toCharArray(),
-                encrypting && encryptKey != null ? encryptKey.toCharArray() : null,
-                encrypting && encryptKey != null,
+                job.cover(), job.output(), kind, content, name, mime, job.scheme(), suite,
+                RatePreset.fromId(job.preset()), KdfProfile.DEFAULT,
+                job.stegoKey().toCharArray(),
+                separate && job.encryptKey() != null ? job.encryptKey().toCharArray() : null,
+                separate && job.encryptKey() != null,
                 false, reencoded));
         if (!outcome.ok()) {
             throw new IllegalArgumentException(outcome.message());
         }
-        BufferedImage image = covers.load(cover);
+        BufferedImage image = covers.load(job.cover());
         BufferedImage stego = null;
         try {
-            stego = StegoOperations.readImage(output);
+            stego = StegoOperations.readImage(job.output());
         } catch (Exception ignored) {
             stego = image;
         }
@@ -523,7 +527,7 @@ final class EmbedPane extends BorderPane {
                 FxImages.scale(image, FxImages.PREVIEW_EDGE),
                 FxImages.scale(stego, FxImages.PREVIEW_EDGE),
                 image.getWidth(), image.getHeight(),
-                shownCapacity,
+                job.shownCapacity(),
                 content.length, null, outcome.message());
     }
 
@@ -627,7 +631,7 @@ final class EmbedPane extends BorderPane {
     }
 
     private String suggestionName(Path cover) {
-        String ext = jpegOutput(cover) ? "jpg" : "png";
+        String ext = outputExtension(cover);
         if (cover == null || cover.getFileName() == null) {
             return "stego." + ext;
         }
@@ -637,16 +641,21 @@ final class EmbedPane extends BorderPane {
         return base + "-stego." + ext;
     }
 
-    private boolean jpegOutput(Path cover) {
+    private String outputExtension(Path cover) {
         String scheme = schemeBox.getValue() == null ? "auto" : schemeBox.getValue();
         if (scheme.startsWith("uerd") || "jpeg".equals(scheme)) {
-            return true;
+            return "jpg";
         }
-        if (!"auto".equals(scheme) || cover == null) {
-            return false;
+        if (cover != null) {
+            String ext = ImageFormats.extensionOf(cover);
+            if ((ext.equals("jpg") || ext.equals("jpeg")) && "auto".equals(scheme)) {
+                return "jpg";
+            }
+            if (ext.equals("bmp")) {
+                return "bmp";
+            }
         }
-        String ext = ImageFormats.extensionOf(cover);
-        return ext.equals("jpg") || ext.equals("jpeg");
+        return "png";
     }
 
     private void recomputeCapacity() {
@@ -657,15 +666,15 @@ final class EmbedPane extends BorderPane {
         }
         String scheme = schemeBox.getValue() == null ? "auto" : schemeBox.getValue();
         double rate = RatePreset.fromId(presetBox.getValue()).rate();
+        int raw;
         if (coverNzac >= 0 && (scheme.startsWith("uerd") || "auto".equals(scheme) || "jpeg".equals(scheme))) {
-            capacity = com.jxzheng.whisper.schemes.framing.ParityFraming.userBudget(coverNzac, coverNzac, rate);
-        } else if ("zhang-tang".equals(scheme) || "zt".equals(scheme)) {
-            capacity = StegoOperations.maxPayloadBytes(coverWidth, coverHeight);
+            raw = com.jxzheng.whisper.schemes.framing.ParityFraming.userBudget(coverNzac, coverNzac, rate);
         } else {
             int pixels = coverWidth * coverHeight;
-            capacity = com.jxzheng.whisper.schemes.framing.ParityFraming.userBudget(
+            raw = com.jxzheng.whisper.schemes.framing.ParityFraming.userBudget(
                     pixels, pixels, Math.min(rate, com.jxzheng.whisper.schemes.adaptive.HillStcScheme.HARD_RATE));
         }
+        capacity = contentRoom(raw);
         if (coverPreview != null) {
             imageCard.setDetail(dimensions(coverWidth, coverHeight, capacity));
         }
@@ -681,7 +690,7 @@ final class EmbedPane extends BorderPane {
         boolean separate = encryptBox.isSelected();
         boolean stegoBlank = stegoPassphrase.getText() == null || stegoPassphrase.getText().isEmpty();
         boolean encBlank = encryptPassphrase.getText() == null || encryptPassphrase.getText().isEmpty();
-        boolean blank = "none".equals(cipherBox.getValue()) ? false : separate ? encBlank : stegoBlank;
+        boolean blank = separate ? encBlank : stegoBlank;
         keyWarning.setVisible(blank);
         keyWarning.setManaged(blank);
         keyWarning.setText(blank ? "Not confidential — the encryption passphrase is blank." : "");
@@ -701,6 +710,37 @@ final class EmbedPane extends BorderPane {
     @FunctionalInterface
     interface Handoff {
         void openExtract(Path stego, String stegoKey, String encryptKey, boolean decrypt, String scheme, String cipher);
+    }
+
+    private int contentRoom(int userBytes) {
+        String mime = textKind.isSelected() ? "text/plain"
+                : imageKind.isSelected() ? "image/png" : "application/octet-stream";
+        int name = 0;
+        if (!textKind.isSelected()) {
+            Path path = pathFrom(messageFileField.getText());
+            if (path != null && path.getFileName() != null) {
+                name = Math.min(255, path.getFileName().toString().getBytes(StandardCharsets.UTF_8).length);
+            }
+        }
+        return Math.max(0, userBytes - (46 + name + mime.length()));
+    }
+
+    private record EmbedJob(
+            Path cover,
+            Path output,
+            String stegoKey,
+            String encryptKey,
+            boolean separate,
+            String scheme,
+            String cipher,
+            boolean text,
+            boolean image,
+            boolean fit,
+            boolean fromFile,
+            String messageText,
+            Path messageFile,
+            String preset,
+            int shownCapacity) {
     }
 
     private record CoverLoad(BufferedImage preview, int width, int height, int nzac, String warning) {

@@ -64,86 +64,115 @@ final class JpegEntropy {
     }
 
     /**
-     * Canonical Huffman table for every symbol with a non-zero count.
-     * Used when a ±1 coefficient change needs a symbol the original table omitted.
+     * JPEG Annex K length-limited Huffman table, matching libjpeg
+     * {@code jpeg_gen_optimal_table}. Symbol 256 is a reserved pseudo-symbol
+     * so no real code is all ones. Codes longer than 16 bits are shortened
+     * in place instead of rejected.
      */
-    static Huff fromFrequencies(int[] freq) {
-        java.util.List<Node> leaves = new java.util.ArrayList<>();
+    static Huff fromFrequencies(int[] freqIn) {
+        long[] freq = new long[257];
+        boolean any = false;
         for (int sym = 0; sym < 256; sym++) {
-            if (freq[sym] > 0) {
-                Node node = new Node();
-                node.sym = sym;
-                node.freq = freq[sym];
-                leaves.add(node);
+            if (freqIn != null && freqIn[sym] > 0) {
+                freq[sym] = freqIn[sym];
+                any = true;
             }
         }
-        if (leaves.isEmpty()) {
-            Node node = new Node();
-            node.sym = 0;
-            node.freq = 1;
-            leaves.add(node);
+        if (!any) {
+            freq[0] = 1;
         }
-        if (leaves.size() == 1) {
-            Node extra = new Node();
-            extra.sym = leaves.get(0).sym == 0 ? 1 : 0;
-            extra.freq = 1;
-            leaves.add(extra);
+        freq[256] = 1;
+        int[] codesize = new int[257];
+        int[] others = new int[257];
+        java.util.Arrays.fill(others, -1);
+        for (;;) {
+            int c1 = -1;
+            long best = 1_000_000_000L;
+            for (int i = 0; i <= 256; i++) {
+                if (freq[i] != 0 && freq[i] <= best) {
+                    best = freq[i];
+                    c1 = i;
+                }
+            }
+            int c2 = -1;
+            best = 1_000_000_000L;
+            for (int i = 0; i <= 256; i++) {
+                if (freq[i] != 0 && freq[i] <= best && i != c1) {
+                    best = freq[i];
+                    c2 = i;
+                }
+            }
+            if (c2 < 0) {
+                break;
+            }
+            freq[c1] += freq[c2];
+            freq[c2] = 0;
+            codesize[c1]++;
+            while (others[c1] >= 0) {
+                c1 = others[c1];
+                codesize[c1]++;
+            }
+            others[c1] = c2;
+            codesize[c2]++;
+            while (others[c2] >= 0) {
+                c2 = others[c2];
+                codesize[c2]++;
+            }
         }
-        java.util.PriorityQueue<Node> queue = new java.util.PriorityQueue<>(leaves);
-        while (queue.size() > 1) {
-            Node left = queue.poll();
-            Node right = queue.poll();
-            Node parent = new Node();
-            parent.freq = left.freq + right.freq;
-            parent.a = left;
-            parent.b = right;
-            queue.add(parent);
+        int[] bits = new int[33];
+        for (int i = 0; i <= 256; i++) {
+            if (codesize[i] == 0) {
+                continue;
+            }
+            if (codesize[i] > 32) {
+                throw new IllegalArgumentException("jpeg: Huffman code longer than 32 bits");
+            }
+            bits[codesize[i]]++;
         }
-        int[] lengths = new int[256];
-        measure(queue.poll(), 0, lengths);
+        for (int i = 32; i > 16; i--) {
+            while (bits[i] > 0) {
+                int j = i - 2;
+                while (j > 0 && bits[j] == 0) {
+                    j--;
+                }
+                if (j <= 0) {
+                    throw new IllegalArgumentException("jpeg: cannot limit Huffman code length");
+                }
+                bits[i] -= 2;
+                bits[i - 1]++;
+                bits[j + 1] += 2;
+                bits[j]--;
+            }
+        }
+        int longest = 32;
+        while (longest > 0 && bits[longest] == 0) {
+            longest--;
+        }
+        if (longest > 0) {
+            bits[longest]--;
+        }
         int[] counts = new int[16];
-        for (int length : lengths) {
-            if (length > 16) {
-                throw new IllegalArgumentException("jpeg: Huffman code longer than 16 bits");
-            }
-            if (length > 0) {
-                counts[length - 1]++;
-            }
+        int nsym = 0;
+        for (int len = 1; len <= 16; len++) {
+            counts[len - 1] = Math.max(bits[len], 0);
+            nsym += counts[len - 1];
         }
-        byte[] symbols = new byte[leaves.size()];
+        byte[] symbols = new byte[nsym];
         int at = 0;
-        for (int length = 1; length <= 16; length++) {
-            for (int sym = 0; sym < 256; sym++) {
-                if (lengths[sym] == length) {
+        for (int len = 1; len <= 32; len++) {
+            for (int sym = 0; sym <= 255; sym++) {
+                if (codesize[sym] == len) {
+                    if (at >= symbols.length) {
+                        throw new IllegalArgumentException("jpeg: Huffman symbol count mismatch");
+                    }
                     symbols[at++] = (byte) sym;
                 }
             }
         }
-        return build(counts, java.util.Arrays.copyOf(symbols, at));
-    }
-
-    private static void measure(Node node, int depth, int[] lengths) {
-        if (node == null) {
-            return;
+        if (at != symbols.length) {
+            throw new IllegalArgumentException("jpeg: Huffman symbol count mismatch");
         }
-        if (node.sym >= 0) {
-            lengths[node.sym] = Math.max(depth, 1);
-            return;
-        }
-        measure(node.a, depth + 1, lengths);
-        measure(node.b, depth + 1, lengths);
-    }
-
-    private static final class Node implements Comparable<Node> {
-        int sym = -1;
-        int freq;
-        Node a;
-        Node b;
-
-        @Override
-        public int compareTo(Node other) {
-            return Integer.compare(freq, other.freq);
-        }
+        return build(counts, symbols);
     }
 
     static Huff build(int[] counts, byte[] symbols) {

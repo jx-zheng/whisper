@@ -3,8 +3,10 @@ package com.jxzheng.whisper.drivers;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Locale;
 
 import org.apache.commons.cli.CommandLine;
@@ -16,10 +18,7 @@ import org.apache.commons.cli.ParseException;
 
 import com.jxzheng.whisper.analysis.ChiSquareAnalyzer;
 import com.jxzheng.whisper.analysis.RsAnalyzer;
-import com.jxzheng.whisper.carrier.BmpCodec;
-import com.jxzheng.whisper.carrier.JpegCoefficients;
-import com.jxzheng.whisper.carrier.PngCodec;
-import com.jxzheng.whisper.carrier.RasterImage;
+import com.jxzheng.whisper.crypto.CipherRegistry;
 import com.jxzheng.whisper.crypto.Envelope;
 import com.jxzheng.whisper.crypto.KdfProfile;
 import com.jxzheng.whisper.media.ImageFormats;
@@ -32,7 +31,7 @@ import com.jxzheng.whisper.payload.MimeSniffer;
 import com.jxzheng.whisper.payload.NameSanitizer;
 import com.jxzheng.whisper.payload.PayloadKind;
 import com.jxzheng.whisper.schemes.RatePreset;
-import com.jxzheng.whisper.schemes.framing.ParityFraming;
+import com.jxzheng.whisper.schemes.SchemeRegistry;
 
 /**
  * Command-line front-end for embed, extract, and statistical analysis.
@@ -66,7 +65,6 @@ public class CliDriver {
             return switch (command) {
                 case "embed" -> runEmbed(commandArgs);
                 case "extract" -> runExtract(commandArgs);
-                case "inspect" -> runInspect(commandArgs);
                 case "analyze" -> runAnalyze(commandArgs);
                 case "help", "-h", "--help" -> {
                     printHelp();
@@ -211,9 +209,11 @@ public class CliDriver {
         options.addOption(Option.builder("s").longOpt("scheme").hasArg().argName("name")
                 .desc("Steganography scheme (default: auto)").build());
         options.addOption(Option.builder("c").longOpt("cipher").hasArg().argName("name")
-                .desc("Cipher for new embeds (default: chacha20-poly1305). aes is decrypt-only.").build());
+                .desc("Cipher for new embeds (default: chacha20-poly1305). "
+                        + "On extract, aes is accepted as a legacy AES-128 hint.").build());
         options.addOption(Option.builder("e").longOpt("encrypt")
-                .desc("Accepted for compatibility. New embeds are encrypted unless --cipher none. "
+                .desc("On extract without -E, try the public empty legacy AES-128 key. "
+                        + "New embeds are encrypted with the selected cipher. "
                         + "Omit -E to use the stego passphrase as the AEAD key.").build());
         options.addOption(Option.builder("k").longOpt("key").hasArg().argName("key")
                 .desc("Stego / pixel-walk key. Optional. Omitted or empty uses the public "
@@ -240,8 +240,6 @@ public class CliDriver {
                 .desc("Keep safe metadata chunks").build());
         options.addOption(Option.builder().longOpt("out-dir").hasArg().argName("dir")
                 .desc("Directory for an extracted file or image").build());
-        options.addOption(Option.builder().longOpt("json")
-                .desc("Print inspect results as JSON").build());
         return options;
     }
 
@@ -249,14 +247,17 @@ public class CliDriver {
         Path input = requiredPath(cl, "input-file");
         Path output = requiredPath(cl, "output-file");
         String scheme = cl.getOptionValue("scheme", "auto");
-        Envelope.SuiteKind suite = suite(cl);
-        if ("uerd-stc".equals(normalizeScheme(scheme, input)) || "uerd".equalsIgnoreCase(scheme) || "jpeg".equalsIgnoreCase(scheme)
-                || (scheme.equals("auto") && isJpeg(input))) {
-            String ext = ImageFormats.extensionOf(output);
+        Envelope.SuiteKind suite = suite(cl, true);
+        String resolved = SchemeRegistry.canonical(scheme, sniffFormat(input));
+        if ("zhang-tang".equals(resolved)) {
+            throw new IllegalArgumentException("Zhang–Tang is decrypt-only. New embeds use hill-stc or uerd-stc.");
+        }
+        String ext = ImageFormats.extensionOf(output);
+        if ("uerd-stc".equals(resolved)) {
             if (!ext.equals("jpg") && !ext.equals("jpeg")) {
                 throw new IllegalArgumentException("uerd-stc writes a JPEG. Use a .jpg output path.");
             }
-        } else {
+        } else if (!ext.equals("png") && !ext.equals("bmp")) {
             ImageFormats.requireLosslessOutput(output);
         }
         byte[] content;
@@ -306,9 +307,9 @@ public class CliDriver {
         PayloadOps.HideRequest request = new PayloadOps.HideRequest(
                 input, output, kind, content, name, mime, scheme, suite,
                 RatePreset.fromId(cl.getOptionValue("preset", "standard")),
-                kdf(cl), stego, enc, enc != null && suite != Envelope.SuiteKind.INTEGRITY,
+                kdf(cl), stego, enc, enc != null,
                 cl.hasOption("keep-metadata"), reencoded);
-        if (blankKey(stego, enc, request.split(), suite)) {
+        if (blankKey(stego, enc, request.split())) {
             System.err.println("Note: a blank passphrase is not confidential. The payload can be derived by anyone.");
         }
         PayloadOps.Outcome outcome = new PayloadOps().hide(request);
@@ -322,11 +323,13 @@ public class CliDriver {
 
     private int runModernExtract(CommandLine cl) throws Exception {
         Path input = requiredPath(cl, "input-file");
+        suite(cl, false);
         char[] stego = stegoKey(cl).toCharArray();
         char[] enc = cl.hasOption("encrypt-key") ? cl.getOptionValue("encrypt-key").toCharArray() : null;
-        boolean split = enc != null && suite(cl) != Envelope.SuiteKind.INTEGRITY;
+        boolean legacyEmpty = enc == null && cl.hasOption("encrypt");
+        boolean split = enc != null;
         PayloadOps.Outcome outcome = new PayloadOps().reveal(
-                input, stego, enc, split, kdf(cl), cl.getOptionValue("scheme", "auto"));
+                input, stego, enc, split, kdf(cl), cl.getOptionValue("scheme", "auto"), legacyEmpty);
         System.err.println(outcome.message());
         if (!outcome.ok()) {
             return outcome.exitCode();
@@ -338,11 +341,12 @@ public class CliDriver {
                     ? NameSanitizer.sanitize("", MimeSniffer.mime(outcome.content()))
                     : outcome.name();
             Path dest = Path.of(cl.getOptionValue("out-dir")).resolve(name);
-            if (Files.exists(dest)) {
+            try {
+                Files.write(dest, outcome.content(), StandardOpenOption.CREATE_NEW);
+            } catch (FileAlreadyExistsException e) {
                 throw new IllegalArgumentException("Refusing to overwrite " + dest
                         + ". Pick another --out-dir or pass -o.");
             }
-            Files.write(dest, outcome.content());
         } else if (outcome.kind() == PayloadKind.TEXT || outcome.legacy()) {
             System.out.write(outcome.content());
             System.out.println();
@@ -352,82 +356,19 @@ public class CliDriver {
         return 0;
     }
 
-    private int runInspect(String[] args) throws Exception {
-        CommandLine cl = new DefaultParser().parse(options, args);
-        Path input = requiredPath(cl, "input-file");
-        byte[] file = Files.readAllBytes(input);
-        String format = PayloadOps.sniff(file);
-        boolean json = cl.hasOption("json");
-        StringBuilder out = new StringBuilder();
-        if ("jpeg".equals(format)) {
-            var jpeg = JpegCoefficients.parse(file);
-            int nz = jpeg.nzac();
-            if (json) {
-                out.append("{\"format\":\"jpeg\",\"nzac\":").append(nz).append(",\"presets\":{");
-            } else {
-                out.append("JPEG ").append(jpeg.width).append('x').append(jpeg.height)
-                        .append(" nonzero AC ").append(nz).append('\n');
-            }
-            boolean first = true;
-            for (RatePreset preset : RatePreset.values()) {
-                int bytes = ParityFraming.userBudget(nz, nz, preset.rate());
-                if (json) {
-                    if (!first) {
-                        out.append(',');
-                    }
-                    out.append('"').append(preset.name().toLowerCase(Locale.ROOT)).append("\":").append(bytes);
-                } else {
-                    out.append(preset.displayName()).append(": ").append(bytes).append(" bytes\n");
+    private static Envelope.SuiteKind suite(CommandLine cl, boolean embed) {
+        String cipher = cl.getOptionValue("cipher");
+        if (cipher != null) {
+            String id = cipher.toLowerCase(Locale.ROOT).trim();
+            if ("aes".equals(id) || "aes-128-gcm".equals(id)) {
+                if (embed) {
+                    throw new IllegalArgumentException(
+                            "AES-128-GCM (-c aes) is decrypt-only. New embeds use chacha20-poly1305 or aes-256-gcm.");
                 }
-                first = false;
-            }
-            if (json) {
-                out.append("}}");
-            }
-        } else {
-            RasterImage image = "bmp".equals(format) ? BmpCodec.read(file) : PngCodec.decode(file);
-            int pixels = image.width * image.height;
-            if (json) {
-                out.append("{\"format\":\"").append(format).append("\",\"pixels\":").append(pixels).append(",\"presets\":{");
-            } else {
-                out.append(format).append(' ').append(image.width).append('x').append(image.height).append('\n');
-            }
-            boolean first = true;
-            for (RatePreset preset : RatePreset.values()) {
-                int bytes = ParityFraming.userBudget(pixels, pixels, preset.rate());
-                if (json) {
-                    if (!first) {
-                        out.append(',');
-                    }
-                    out.append('"').append(preset.name().toLowerCase(Locale.ROOT)).append("\":").append(bytes);
-                } else {
-                    out.append(preset.displayName()).append(": ").append(bytes).append(" bytes\n");
-                }
-                first = false;
-            }
-            if (json) {
-                out.append("}}");
+                return null;
             }
         }
-        System.out.print(out);
-        if (!json) {
-            System.out.print("");
-        } else {
-            System.out.println();
-        }
-        return 0;
-    }
-
-    private static Envelope.SuiteKind suite(CommandLine cl) {
-        String cipher = cl.getOptionValue("cipher", "chacha20-poly1305");
-        return switch (cipher.toLowerCase(Locale.ROOT)) {
-            case "aes-256-gcm", "aes256", "aes-gcm" -> Envelope.SuiteKind.AES;
-            case "none", "integrity" -> Envelope.SuiteKind.INTEGRITY;
-            case "chacha20-poly1305", "chacha" -> Envelope.SuiteKind.CHACHA;
-            case "aes", "aes-128-gcm" -> throw new IllegalArgumentException(
-                    "AES-128-GCM (-c aes) is decrypt-only. New embeds use chacha20-poly1305 or aes-256-gcm.");
-            default -> throw new IllegalArgumentException("Unsupported cipher: " + cipher);
-        };
+        return CipherRegistry.suite(cipher);
     }
 
     private static KdfProfile kdf(CommandLine cl) {
@@ -439,30 +380,25 @@ public class CliDriver {
         return KdfProfile.fromId(id);
     }
 
-    private static boolean blankKey(char[] stego, char[] enc, boolean split, Envelope.SuiteKind suite) {
-        if (suite == Envelope.SuiteKind.INTEGRITY) {
-            return false;
-        }
+    private static boolean blankKey(char[] stego, char[] enc, boolean split) {
         if (split) {
             return enc == null || enc.length == 0;
         }
         return stego == null || stego.length == 0;
     }
 
-    private static boolean isJpeg(Path path) throws java.io.IOException {
+    private static String sniffFormat(Path path) throws IOException {
         byte[] prefix = new byte[3];
+        int n;
         try (var in = Files.newInputStream(path)) {
-            if (in.read(prefix) < 3) {
-                return false;
-            }
+            n = in.read(prefix);
         }
-        return (prefix[0] & 0xff) == 0xff && (prefix[1] & 0xff) == 0xd8;
-    }
-
-    private static String normalizeScheme(String scheme, Path input) throws java.io.IOException {
-        if (scheme == null || scheme.isBlank() || scheme.equalsIgnoreCase("auto")) {
-            return isJpeg(input) ? "uerd-stc" : "hill-stc";
+        if (n >= 3 && (prefix[0] & 0xff) == 0xff && (prefix[1] & 0xff) == 0xd8) {
+            return "jpeg";
         }
-        return scheme.toLowerCase(Locale.ROOT);
+        if (n >= 2 && prefix[0] == 'B' && prefix[1] == 'M') {
+            return "bmp";
+        }
+        return "png";
     }
 }

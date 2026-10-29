@@ -1,12 +1,8 @@
 package com.jxzheng.whisper.crypto;
 
-import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Arrays;
-
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 
 /**
  * Whisper v2 envelope. There is no plaintext magic. The 16-byte salt is both
@@ -23,8 +19,7 @@ public final class Envelope {
 
     public enum SuiteKind {
         CHACHA(ChaCha20Poly1305Suite.INSTANCE),
-        AES(AesGcmSuite.INSTANCE),
-        INTEGRITY(IntegrityOnlySuite.INSTANCE);
+        AES(AesGcmSuite.INSTANCE);
 
         final AeadSuite suite;
 
@@ -41,7 +36,6 @@ public final class Envelope {
         public char[] stegoPass;
         public char[] encPass;
         public boolean split;
-        public byte[] keyFile;
         public KdfProfile profile = KdfProfile.DEFAULT;
         public SuiteKind suite = SuiteKind.CHACHA;
         public Compression.Mode compress = Compression.Mode.AUTO;
@@ -59,7 +53,6 @@ public final class Envelope {
         public char[] stegoPass;
         public char[] encPass;
         public boolean split;
-        public byte[] keyFile;
         /** Profile to try. High is never guessed. */
         public KdfProfile profile = KdfProfile.DEFAULT;
         /** Public salt read off the cover. Null when the scheme has none. */
@@ -88,8 +81,7 @@ public final class Envelope {
                     Secrets.copy(request.stegoPass),
                     Secrets.copy(request.encPass),
                     request.split,
-                    Secrets.copy(request.keyFile),
-                    request.keyFile != null ? KdfProfile.KEYFILE : request.profile,
+                    request.profile,
                     salt,
                     fileNonce);
             if (shouldCompress(request, frame)) {
@@ -106,16 +98,11 @@ public final class Envelope {
                 flags |= 0x10;
             }
             flags |= (request.suite.suite.suiteBits() & 3) << 5;
-            byte[] header = header(flags, request.keyFile != null ? KdfProfile.KEYFILE : request.profile, salt, fileNonce, frame.length);
-            byte[] envelope;
-            if (request.suite == SuiteKind.INTEGRITY) {
-                envelope = sealIntegrity(header, body, derived.macKey());
-            } else {
-                int ctLen = Stream.cipherLen(body.length);
-                envelope = new byte[HEADER + ctLen];
-                System.arraycopy(header, 0, envelope, 0, HEADER);
-                Stream.seal(request.suite.suite, derived.payloadKey(), header, body, 0, body.length, envelope, HEADER);
-            }
+            byte[] header = header(flags, request.profile, salt, fileNonce, frame.length);
+            int ctLen = Stream.cipherLen(body.length);
+            byte[] envelope = new byte[HEADER + ctLen];
+            System.arraycopy(header, 0, envelope, 0, HEADER);
+            Stream.seal(request.suite.suite, derived.payloadKey(), header, body, 0, body.length, envelope, HEADER);
             byte[] visit = derived.visitSeed().clone();
             return new Sealed(envelope, salt, visit, compressed);
         } finally {
@@ -127,7 +114,6 @@ public final class Envelope {
             }
             Secrets.wipe(request.stegoPass);
             Secrets.wipe(request.encPass);
-            Secrets.wipe(request.keyFile);
             Secrets.wipe(fileNonce);
         }
     }
@@ -137,14 +123,12 @@ public final class Envelope {
         if (request.expectedSalt != null && !MessageDigest.isEqual(request.expectedSalt, parsed.salt)) {
             Secrets.wipe(request.stegoPass);
             Secrets.wipe(request.encPass);
-            Secrets.wipe(request.keyFile);
             throw new AuthException(AuthException.Kind.SALT, parsed.suite.suite.suiteBits(), "salt mismatch");
         }
-        KdfProfile profile = request.keyFile != null ? KdfProfile.KEYFILE : request.profile;
+        KdfProfile profile = request.profile;
         if (parsed.profile != profile) {
             Secrets.wipe(request.stegoPass);
             Secrets.wipe(request.encPass);
-            Secrets.wipe(request.keyFile);
             throw new AuthException(AuthException.Kind.AUTH, parsed.suite.suite.suiteBits(), "kdf profile mismatch");
         }
         byte[] master = request.stegoMaster;
@@ -152,12 +136,8 @@ public final class Envelope {
         KeySchedule.Derived derived = null;
         try {
             if (master == null) {
-                if (request.keyFile != null) {
-                    master = KeySchedule.normalizeKeyFile(request.keyFile);
-                } else {
-                    master = Argon2idKdf.INSTANCE.derive(
-                            request.stegoPass == null ? new char[0] : request.stegoPass, parsed.salt, profile);
-                }
+                master = Argon2idKdf.INSTANCE.derive(
+                        request.stegoPass == null ? new char[0] : request.stegoPass, parsed.salt, profile);
                 ownedMaster = true;
             }
             derived = reopen(master, request, profile, parsed);
@@ -172,14 +152,13 @@ public final class Envelope {
             }
             Secrets.wipe(request.stegoPass);
             Secrets.wipe(request.encPass);
-            Secrets.wipe(request.keyFile);
         }
     }
 
     private static KeySchedule.Derived reopen(byte[] stegoMaster, OpenRequest request, KdfProfile profile, Parsed parsed) {
         byte[] encMaster = null;
         try {
-            if (!request.split || request.keyFile != null) {
+            if (!request.split) {
                 encMaster = stegoMaster.clone();
             } else {
                 if (request.encPass == null) {
@@ -204,26 +183,12 @@ public final class Envelope {
     }
 
     private static byte[] decrypt(Parsed parsed, KeySchedule.Derived derived, byte[] blob) throws AuthException {
+        byte[] ct = Arrays.copyOfRange(blob, HEADER, blob.length);
         byte[] body;
-        if (parsed.suite == SuiteKind.INTEGRITY) {
-            if (blob.length < HEADER + IntegrityOnlySuite.TAG_BYTES) {
-                throw new AuthException(AuthException.Kind.INCOMPLETE, 2, "truncated integrity envelope");
-            }
-            byte[] tag = Arrays.copyOfRange(blob, blob.length - 32, blob.length);
-            byte[] expect = hmac(derived.macKey(), blob, blob.length - 32);
-            boolean ok = MessageDigest.isEqual(expect, tag);
-            Secrets.wipe(expect);
-            if (!ok) {
-                throw new AuthException(AuthException.Kind.AUTH, 2, "hmac mismatch");
-            }
-            body = Arrays.copyOfRange(blob, HEADER, blob.length - 32);
-        } else {
-            byte[] ct = Arrays.copyOfRange(blob, HEADER, blob.length);
-            try {
-                body = Stream.open(parsed.suite.suite, derived.payloadKey(), Arrays.copyOf(blob, HEADER), ct);
-            } finally {
-                Secrets.wipe(ct);
-            }
+        try {
+            body = Stream.open(parsed.suite.suite, derived.payloadKey(), Arrays.copyOf(blob, HEADER), ct);
+        } finally {
+            Secrets.wipe(ct);
         }
         try {
             if (!parsed.compressed) {
@@ -254,7 +219,6 @@ public final class Envelope {
         SuiteKind suite = switch ((flags >> 5) & 3) {
             case 0 -> SuiteKind.CHACHA;
             case 1 -> SuiteKind.AES;
-            case 2 -> SuiteKind.INTEGRITY;
             default -> throw new AuthException(AuthException.Kind.FORMAT, "bad suite");
         };
         KdfProfile profile = KdfProfile.fromWire(blob[1] & 0xff);
@@ -268,7 +232,7 @@ public final class Envelope {
         if (frameLen > MAX_FRAME) {
             throw new AuthException(AuthException.Kind.FORMAT, suite.suite.suiteBits(), "frame exceeds 64 MiB");
         }
-        if (suite != SuiteKind.INTEGRITY && blob.length < HEADER + 16) {
+        if (blob.length < HEADER + 16) {
             throw new AuthException(AuthException.Kind.INCOMPLETE, suite.suite.suiteBits(), "missing tag");
         }
         Parsed parsed = new Parsed();
@@ -289,27 +253,6 @@ public final class Envelope {
             return true;
         }
         return frame.length >= 64 && !request.contentAlreadyDense && Compression.shannon(frame) < 7.2;
-    }
-
-    private static byte[] sealIntegrity(byte[] header, byte[] body, byte[] macKey) throws AuthException {
-        byte[] out = new byte[HEADER + body.length + IntegrityOnlySuite.TAG_BYTES];
-        System.arraycopy(header, 0, out, 0, HEADER);
-        System.arraycopy(body, 0, out, HEADER, body.length);
-        byte[] tag = hmac(macKey, out, out.length - IntegrityOnlySuite.TAG_BYTES);
-        System.arraycopy(tag, 0, out, out.length - tag.length, tag.length);
-        Secrets.wipe(tag);
-        return out;
-    }
-
-    private static byte[] hmac(byte[] key, byte[] data, int len) throws AuthException {
-        try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(key, "HmacSHA256"));
-            mac.update(data, 0, len);
-            return mac.doFinal();
-        } catch (GeneralSecurityException e) {
-            throw new AuthException(AuthException.Kind.AUTH, 2, "hmac failed");
-        }
     }
 
     private static byte[] header(int flags, KdfProfile profile, byte[] salt, byte[] fileNonce, int frameLen) {

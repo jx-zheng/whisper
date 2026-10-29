@@ -11,7 +11,6 @@ import javax.imageio.ImageIO;
 import javax.imageio.ImageReadParam;
 import javax.imageio.ImageReader;
 
-import com.jxzheng.whisper.crypto.CipherRegistry;
 import com.jxzheng.whisper.crypto.KdfProfile;
 import com.jxzheng.whisper.ops.PayloadOps;
 import com.jxzheng.whisper.ops.StegoOperations;
@@ -48,7 +47,6 @@ final class ExtractPane extends BorderPane {
     private final PassphraseField encryptPassphrase = new PassphraseField("Optional — blank is not confidential");
     private final CheckBox decryptBox = new CheckBox("Separate encryption passphrase");
     private final ComboBox<String> schemeBox;
-    private final ComboBox<String> cipherBox;
     private final TextArea result = new TextArea();
     private final Label resultMeta = new Label("Extracted message will appear here.");
     private final Label fileTitle = new Label("File");
@@ -76,7 +74,6 @@ final class ExtractPane extends BorderPane {
         schemeNames.add("auto");
         schemeNames.addAll(operations.schemes());
         schemeBox = Forms.choice(schemeNames, "auto");
-        cipherBox = Forms.choice(operations.ciphers(), CipherRegistry.CHACHA);
         build();
         disableProperty().bind(status.busyProperty());
     }
@@ -95,11 +92,8 @@ final class ExtractPane extends BorderPane {
         result.setStyle("-fx-font-family: \"" + UiFonts.mono + "\";");
 
         VBox schemeField = Forms.field("Scheme", schemeBox);
-        VBox cipherField = Forms.field("Cipher", cipherBox);
-        HBox.setHgrow(schemeField, Priority.ALWAYS);
-        HBox.setHgrow(cipherField, Priority.ALWAYS);
         schemeField.setMinWidth(0);
-        cipherField.setMinWidth(0);
+        schemeField.setMaxWidth(Double.MAX_VALUE);
         VBox encryptKeyField = Forms.field("Encryption passphrase", encryptPassphrase);
         encryptKeyField.managedProperty().bind(decryptBox.selectedProperty());
         encryptKeyField.visibleProperty().bind(decryptBox.selectedProperty());
@@ -108,7 +102,7 @@ final class ExtractPane extends BorderPane {
                 Forms.hint("Pixel-walk key. Blank matches an embed that left the stego passphrase empty."),
                 decryptBox,
                 encryptKeyField,
-                schemeRow(schemeField, cipherField),
+                schemeField,
                 Forms.hint("Leave the encryption passphrase off to use the stego passphrase for both. "
                         + "Turn it on for a separate key, including legacy AES-128. "
                         + "A blank passphrase is not confidential. Ciphertext is never shown as the payload.")));
@@ -175,22 +169,13 @@ final class ExtractPane extends BorderPane {
         PaneLayout.apply(this, imageColumn, imageCard, form, stacked, width);
     }
 
-    private static HBox schemeRow(VBox schemeField, VBox cipherField) {
-        HBox row = new HBox(12, schemeField, cipherField);
-        row.setMinWidth(0);
-        return row;
-    }
-
     void loadFromEmbed(Path stego, String stegoKey, String encryptKey, boolean decrypt, String scheme, String cipher) {
         imageField.setText(stego.toString());
         stegoPassphrase.setText(stegoKey);
         encryptPassphrase.setText(encryptKey);
         decryptBox.setSelected(decrypt);
-        if (scheme != null && !scheme.isBlank()) {
+        if (scheme != null && schemeBox.getItems().contains(scheme)) {
             schemeBox.setValue(scheme);
-        }
-        if (cipher != null && !cipher.isBlank()) {
-            cipherBox.setValue(cipher);
         }
         loaded = "";
         clearResult();

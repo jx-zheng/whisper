@@ -35,7 +35,8 @@ Extract prints `Verified · SHA-256 …` on standard error when the payload chec
 |---|---|---|---|
 | `hill-stc` | PNG or BMP photos | Green (or grey) samples, ±1, HILL cost + STC | 0.10 bpp standard |
 | `uerd-stc` | Baseline JPEG photos | Nonzero luminance AC coefficients, ±1 toward zero | 0.10 bpnzAC standard |
-| `zhang-tang` | Small covers, or when you need more room | LSB pairs, about 3 bits per pixel, easier to detect | up to 64 KiB |
+
+Zhang–Tang is extract-only. It reads Whisper 0.9 images and is not offered for new embeds.
 
 Standard, Low (0.05), and Paranoid (0.02) are the stealth presets. The recipient does not have to pick the same one.
 
@@ -44,12 +45,7 @@ Rough room at Standard, after framing:
 - 1 megapixel PNG: about 12 KB
 - 12 megapixel PNG: about 150 KB
 
-A JPEG's room depends on how many nonzero AC coefficients it has, not on its pixel count. `inspect` prints the number for a file.
-
-```bash
-java -jar target/whisper-1.0.0.jar inspect -i cover.png
-java -jar target/whisper-1.0.0.jar inspect -i photo.jpg --json
-```
+A JPEG's room depends on how many nonzero AC coefficients it has, not on its pixel count. The desktop app shows a content estimate for the open cover.
 
 ## What you can hide
 
@@ -57,7 +53,7 @@ java -jar target/whisper-1.0.0.jar inspect -i photo.jpg --json
 - **File.** Any bytes. `--file report.pdf`. The sanitized base name is stored so Extract can suggest it.
 - **Image.** `--image secret.png`. If it does not fit, `--fit-quality 75 --fit-max-edge 1024` re-encodes a smaller JPEG copy of the *hidden* image. The cover is not re-encoded.
 
-Passphrases: `-k` is the stego passphrase. `-E` / `--encrypt-key` is a separate encryption passphrase. Omit `-E` and the stego passphrase is used for both. `--cipher none` authenticates with HMAC and does not encrypt. `--kdf high` uses the 2 GiB Argon2id profile.
+Passphrases: `-k` is the stego passphrase. `-E` / `--encrypt-key` is a separate encryption passphrase. Omit `-E` and the stego passphrase is used for both. New embeds use ChaCha20-Poly1305 or AES-256-GCM. `--kdf high` uses the 2 GiB Argon2id profile.
 
 ## Verification
 
@@ -67,13 +63,11 @@ On success the CLI and the app show the cipher and the full SHA-256 of the conte
 |---|---|
 | Verified · cipher · SHA-256 … | Tag and content hash match |
 | Verified, not confidential · … | Tag and content hash match, and the encryption passphrase was blank |
-| Verified, not encrypted · SHA-256 … | HMAC matched; anyone with the stego passphrase can read it |
 | Nothing found with this key | Wrong stego passphrase, no payload, or the image was edited |
 | Wrong encryption passphrase, or the payload was tampered with | The stego passphrase found a payload; the encryption passphrase or the bytes did not |
 | Payload damaged (incomplete / decompression failed) | The stream is truncated or will not inflate. Nothing is shown |
 | Integrity check failed: content hash does not match | The tag matched and the hash did not. The content is not shown |
-| Tampered or wrong key (not encrypted) | Integrity-only HMAC failed |
-| Unverified (legacy format) | A Whisper 0.9 image. Re-embed to get a content hash. Encrypted 0.9 images need `-E` and then read "AES-GCM tag OK; no content hash". Ciphertext is not shown |
+| Unverified (legacy format) | A Whisper 0.9 image. Re-embed to get a content hash. Encrypted 0.9 images need `-E` (or `-e` for the public empty key) and then read "AES-GCM tag OK; no content hash". Ciphertext is not shown |
 
 ## Security model
 

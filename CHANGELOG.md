@@ -10,6 +10,7 @@ Whisper2 has been merged into Whisper. This is the only product.
 - Embed Text, any File, or an Image. Fit-to-capacity re-encodes the hidden image, not the cover.
 - Zhang–Tang remains available as the high-capacity legacy scheme. New embeds, including Zhang–Tang, use the v2 envelope. AES-128-GCM is decrypt-only.
 - A blank passphrase is allowed and labelled not confidential. `--kdf test` is available only with `-Dwhisper.kdf.test=true`.
+- New embeds are hill-stc or uerd-stc with ChaCha20-Poly1305 or AES-256-GCM. Zhang–Tang, integrity-only mode, key files, and `inspect` are not embed options. Zhang–Tang remains decrypt-only for 0.9 images.
 
 ## 0.9.0
 

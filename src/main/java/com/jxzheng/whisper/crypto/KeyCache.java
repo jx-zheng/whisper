@@ -24,22 +24,20 @@ public final class KeyCache implements AutoCloseable {
 
     /**
      * @return a copy of the 32-byte master. The caller wipes the copy.
-     *         {@code pass} and {@code keyFile} are not wiped.
+     *         {@code pass} is not wiped.
      */
-    public byte[] master(String role, char[] pass, byte[] keyFile, KdfProfile profile, byte[] salt16) {
+    public byte[] master(String role, char[] pass, KdfProfile profile, byte[] salt16) {
         if (salt16 == null || salt16.length != 16) {
             throw new IllegalArgumentException("salt must be 16 bytes");
         }
-        byte[] secret = keyFile != null ? KeySchedule.normalizeKeyFile(keyFile) : Secrets.utf8(pass);
+        byte[] secret = Secrets.utf8(pass);
         try {
             String id = cacheId(role, profile, salt16, secret);
             byte[] hit = masters.get(id);
             if (hit != null) {
                 return hit.clone();
             }
-            byte[] derived = keyFile != null
-                    ? secret.clone()
-                    : kdf.derive(pass == null ? new char[0] : pass, salt16, profile);
+            byte[] derived = kdf.derive(pass == null ? new char[0] : pass, salt16, profile);
             masters.put(id, derived);
             return derived.clone();
         } finally {

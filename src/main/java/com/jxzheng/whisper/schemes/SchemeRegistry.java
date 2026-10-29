@@ -7,12 +7,13 @@ import com.jxzheng.whisper.schemes.adaptive.HillStcScheme;
 import com.jxzheng.whisper.schemes.adaptive.UerdStcScheme;
 
 /**
- * Ordered scheme list. Combo boxes and the CLI read this rather than a hard-coded name.
+ * Embed schemes. Blank or {@code auto} follows the cover format.
+ * Zhang–Tang aliases remain so extract can name the 0.9 reveal path.
  */
 public final class SchemeRegistry {
 
     private static final SchemeRegistry INSTANCE = new SchemeRegistry(List.of(
-            new HillStcScheme(), new UerdStcScheme(), new ZhangTangStegoScheme()));
+            new HillStcScheme(), new UerdStcScheme()));
 
     private final List<StegoScheme> schemes;
 
@@ -32,26 +33,20 @@ public final class SchemeRegistry {
         return schemes.stream().map(StegoScheme::id).toList();
     }
 
-    public StegoScheme require(String name) {
-        String canonical = canonical(name);
-        for (StegoScheme scheme : schemes) {
-            if (scheme.id().equals(canonical)) {
-                return scheme;
-            }
+    /**
+     * One mapping. Blank and {@code auto} become hill-stc, or uerd-stc when
+     * {@code format} is {@code jpeg}.
+     */
+    public static String canonical(String scheme, String format) {
+        String name = scheme == null ? "" : scheme.toLowerCase(Locale.ROOT).trim();
+        if (name.isEmpty() || "auto".equals(name)) {
+            return "jpeg".equals(format) ? UerdStcScheme.ID : HillStcScheme.ID;
         }
-        throw new IllegalArgumentException("Unsupported scheme: " + canonical);
-    }
-
-    public static String canonical(String scheme) {
-        String name = (scheme == null || scheme.isBlank())
-                ? ZhangTangStegoScheme.ID
-                : scheme.toLowerCase(Locale.ROOT).trim();
         return switch (name) {
-            case "zhang-tang", "zhangtang", "zt" -> ZhangTangStegoScheme.ID;
             case "hill", "hill-stc" -> HillStcScheme.ID;
             case "uerd", "uerd-stc", "jpeg" -> UerdStcScheme.ID;
-            case "auto" -> "auto";
-            default -> name;
+            case "zhang-tang", "zhangtang", "zt" -> ZhangTangStegoScheme.ID;
+            default -> throw new IllegalArgumentException("Unsupported scheme: " + scheme);
         };
     }
 }

@@ -103,25 +103,28 @@ class CryptoVectorsTest {
     }
 
     @Test
-    void keyFileRoundTripAndEveryBitFlipFails() throws Exception {
-        byte[] key = filled(32, 0x42);
+    void passphraseRoundTripAndSampledBitFlipsFail() throws Exception {
         byte[] frame = new byte[200];
         for (int i = 0; i < frame.length; i++) {
             frame[i] = (byte) (i * 3 + 1);
         }
         Envelope.SealRequest seal = new Envelope.SealRequest();
-        seal.keyFile = key.clone();
+        seal.profile = KdfProfile.TEST;
+        seal.stegoPass = "bit-flip".toCharArray();
         seal.suite = Envelope.SuiteKind.CHACHA;
         seal.compress = Compression.Mode.OFF;
         Envelope.Sealed sealed = Envelope.seal(seal, frame);
         Envelope.OpenRequest open = new Envelope.OpenRequest();
-        open.keyFile = key.clone();
+        open.profile = KdfProfile.TEST;
+        open.stegoPass = "bit-flip".toCharArray();
         assertArrayEquals(frame, Envelope.open(open, sealed.bytes()).frame());
-        for (int bit = 0; bit < sealed.bytes().length * 8; bit++) {
+        int[] bits = {0, 8, 40, sealed.bytes().length * 8 / 2, sealed.bytes().length * 8 - 1};
+        for (int bit : bits) {
             byte[] flipped = sealed.bytes().clone();
             flipped[bit >>> 3] ^= (byte) (1 << (bit & 7));
             Envelope.OpenRequest attempt = new Envelope.OpenRequest();
-            attempt.keyFile = key.clone();
+            attempt.profile = KdfProfile.TEST;
+            attempt.stegoPass = "bit-flip".toCharArray();
             AuthException error = assertThrows(AuthException.class, () -> Envelope.open(attempt, flipped));
             assertTrue(error.kind() == AuthException.Kind.FORMAT
                     || error.kind() == AuthException.Kind.AUTH
@@ -132,21 +135,20 @@ class CryptoVectorsTest {
     }
 
     @Test
-    void aesAndIntegrityRoundTrip() throws Exception {
-        byte[] key = filled(32, 0x7);
+    void aesRoundTrip() throws Exception {
         byte[] frame = "payload".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        for (Envelope.SuiteKind suite : new Envelope.SuiteKind[] {Envelope.SuiteKind.AES, Envelope.SuiteKind.INTEGRITY}) {
-            Envelope.SealRequest seal = new Envelope.SealRequest();
-            seal.keyFile = key.clone();
-            seal.suite = suite;
-            seal.compress = Compression.Mode.OFF;
-            Envelope.Sealed sealed = Envelope.seal(seal, frame);
-            Envelope.OpenRequest open = new Envelope.OpenRequest();
-            open.keyFile = key.clone();
-            Envelope.Opened opened = Envelope.open(open, sealed.bytes());
-            assertArrayEquals(frame, opened.frame());
-            assertEquals(suite, opened.suite());
-        }
+        Envelope.SealRequest seal = new Envelope.SealRequest();
+        seal.profile = KdfProfile.TEST;
+        seal.stegoPass = "aes-pass".toCharArray();
+        seal.suite = Envelope.SuiteKind.AES;
+        seal.compress = Compression.Mode.OFF;
+        Envelope.Sealed sealed = Envelope.seal(seal, frame);
+        Envelope.OpenRequest open = new Envelope.OpenRequest();
+        open.profile = KdfProfile.TEST;
+        open.stegoPass = "aes-pass".toCharArray();
+        Envelope.Opened opened = Envelope.open(open, sealed.bytes());
+        assertArrayEquals(frame, opened.frame());
+        assertEquals(Envelope.SuiteKind.AES, opened.suite());
     }
 
     @Test
@@ -154,13 +156,15 @@ class CryptoVectorsTest {
         byte[] frame = new byte[400];
         Arrays.fill(frame, (byte) 'A');
         Envelope.SealRequest seal = new Envelope.SealRequest();
-        seal.keyFile = filled(32, 3);
+        seal.profile = KdfProfile.TEST;
+        seal.stegoPass = "compress".toCharArray();
         seal.compress = Compression.Mode.AUTO;
         Envelope.Sealed sealed = Envelope.seal(seal, frame);
         assertTrue(sealed.compressed());
         assertTrue(sealed.bytes().length < frame.length);
         Envelope.OpenRequest open = new Envelope.OpenRequest();
-        open.keyFile = filled(32, 3);
+        open.profile = KdfProfile.TEST;
+        open.stegoPass = "compress".toCharArray();
         assertArrayEquals(frame, Envelope.open(open, sealed.bytes()).frame());
     }
 
@@ -211,13 +215,15 @@ class CryptoVectorsTest {
         Secrets.wiped.clear();
         try {
             Envelope.SealRequest seal = new Envelope.SealRequest();
-            seal.keyFile = filled(32, 9);
+            seal.profile = KdfProfile.TEST;
+            seal.stegoPass = "wipe-me".toCharArray();
             seal.compress = Compression.Mode.OFF;
             Envelope.Sealed sealed = Envelope.seal(seal, new byte[] {1, 2, 3, 4});
             assertFalse(Secrets.allZero(sealed.visitSeed()));
             Secrets.wipe(sealed.visitSeed());
             Envelope.OpenRequest open = new Envelope.OpenRequest();
-            open.keyFile = filled(32, 9);
+            open.profile = KdfProfile.TEST;
+            open.stegoPass = "wipe-me".toCharArray();
             Envelope.open(open, sealed.bytes());
             assertFalse(Secrets.wiped.isEmpty());
             for (byte[] secret : Secrets.wiped) {

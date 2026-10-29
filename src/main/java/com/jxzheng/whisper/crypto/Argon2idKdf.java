@@ -19,7 +19,7 @@ public final class Argon2idKdf implements PasswordKdf {
         if (salt16 == null || salt16.length != 16) {
             throw new IllegalArgumentException("Argon2id salt must be 16 bytes");
         }
-        if (profile == null || profile == KdfProfile.KEYFILE) {
+        if (profile == null) {
             throw new IllegalArgumentException("Argon2id needs a password profile");
         }
         byte[] password = Secrets.utf8(pass);

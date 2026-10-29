@@ -4,15 +4,14 @@ import java.util.List;
 
 /**
  * Cipher ids for new embeds. Blank means ChaCha20-Poly1305.
- * AES-128-GCM ({@code aes}) is decrypt-only and is not offered here.
+ * AES-128-GCM ({@code aes}) is decrypt-only and is not registered here.
  */
 public final class CipherRegistry {
 
     public static final String CHACHA = "chacha20-poly1305";
     public static final String AES_256 = "aes-256-gcm";
-    public static final String NONE = "none";
 
-    private static final CipherRegistry INSTANCE = new CipherRegistry(List.of(CHACHA, AES_256, NONE));
+    private static final CipherRegistry INSTANCE = new CipherRegistry(List.of(CHACHA, AES_256));
 
     private final List<String> ids;
 
@@ -34,5 +33,13 @@ public final class CipherRegistry {
             throw new IllegalArgumentException("Unsupported cipher: " + name);
         }
         return id;
+    }
+
+    public static Envelope.SuiteKind suite(String name) {
+        return switch (shared().canonical(name)) {
+            case AES_256 -> Envelope.SuiteKind.AES;
+            case CHACHA -> Envelope.SuiteKind.CHACHA;
+            default -> throw new IllegalArgumentException("Unsupported cipher: " + name);
+        };
     }
 }

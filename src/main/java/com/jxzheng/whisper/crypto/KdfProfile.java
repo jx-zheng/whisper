@@ -5,7 +5,6 @@ package com.jxzheng.whisper.crypto;
  * Memory is kibibytes, matching {@code Argon2Parameters.Builder.withMemoryAsKB}.
  */
 public enum KdfProfile {
-    KEYFILE(0, 0, 0, 0),
     DEFAULT(1, 3, 64 * 1024, 4),
     HIGH(2, 1, 2 * 1024 * 1024, 4),
     TEST(3, 2, 32 * 1024, 1);
@@ -55,7 +54,6 @@ public enum KdfProfile {
             case "default" -> DEFAULT;
             case "high" -> HIGH;
             case "test" -> TEST;
-            case "keyfile" -> KEYFILE;
             default -> throw new IllegalArgumentException("Unknown KDF profile: " + id);
         };
     }

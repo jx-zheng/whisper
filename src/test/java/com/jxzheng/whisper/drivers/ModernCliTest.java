@@ -23,7 +23,6 @@ class ModernCliTest {
         javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(160, 120, java.awt.image.BufferedImage.TYPE_INT_RGB), "png", cover.toFile());
         roundTrip(dir, cover, "hill-stc", "chacha20-poly1305", "png");
         roundTrip(dir, cover, "hill-stc", "aes-256-gcm", "png");
-        roundTrip(dir, cover, "hill-stc", "none", "png");
     }
 
     @Test
@@ -39,6 +38,22 @@ class ModernCliTest {
         assertEquals(0, driver.run(new String[] {
                 "extract", "-i", out.toString(), "--scheme", "uerd-stc", "--kdf", "test", "-k", "walk",
                 "-o", saved.toString()
+        }));
+        assertEquals("hi", Files.readString(saved));
+    }
+
+    @Test
+    void optimizedHuffmanJpegEmbeds(@TempDir Path dir) throws Exception {
+        Path cover = Path.of(ModernCliTest.class.getResource("/fixtures/jpeg/optimized-qf75.jpg").toURI());
+        Path out = dir.resolve("stego.jpg");
+        Path saved = dir.resolve("out.txt");
+        CliDriver driver = new CliDriver();
+        assertEquals(0, driver.run(new String[] {
+                "embed", "-i", cover.toString(), "-o", out.toString(), "-m", "hi",
+                "--scheme", "uerd-stc", "--kdf", "test", "-k", "walk"
+        }));
+        assertEquals(0, driver.run(new String[] {
+                "extract", "-i", out.toString(), "--kdf", "test", "-k", "walk", "-o", saved.toString()
         }));
         assertEquals("hi", Files.readString(saved));
     }

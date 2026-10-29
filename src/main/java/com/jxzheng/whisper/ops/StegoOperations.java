@@ -23,6 +23,7 @@ import com.jxzheng.whisper.media.ImageFormats;
 import com.jxzheng.whisper.schemes.AbstractScheme;
 import com.jxzheng.whisper.schemes.EmbedOptions;
 import com.jxzheng.whisper.schemes.SchemeRegistry;
+import com.jxzheng.whisper.schemes.ZhangTangStegoScheme;
 
 /**
  * Embed, extract, and analyze entry points shared by the CLI and the desktop app.
@@ -80,8 +81,7 @@ public final class StegoOperations {
             throw new MessageTooLongException(
                     "Message exceeds max message length of " + AbstractScheme.MAX_PAYLOAD_LENGTH);
         }
-        BufferedImage stego = SchemeRegistry.shared()
-                .require(scheme)
+        BufferedImage stego = new ZhangTangStegoScheme()
                 .embed(Carrier.of(cover), payload, null, EmbedOptions.legacy(walkKey), Progress.NONE)
                 .image();
         return new EmbedResult(stego, payload.length);
@@ -108,8 +108,8 @@ public final class StegoOperations {
         if (decrypt) {
             createCipher(cipher);
         }
-        byte[] payload = SchemeRegistry.shared()
-                .require(scheme)
+        canonicalScheme(scheme);
+        byte[] payload = new ZhangTangStegoScheme()
                 .extract(Carrier.of(stego), null, EmbedOptions.legacy(walkKey));
         if (decrypt) {
             payload = createCipher(cipher).decrypt(payload, cipherKey);
