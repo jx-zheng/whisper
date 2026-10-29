@@ -14,8 +14,9 @@ import javax.imageio.ImageWriter;
 import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 /**
- * Re-encodes a hidden image as JPEG until the framed payload fits the cover.
- * The cover itself is not touched.
+ * Re-encodes a hidden image as JPEG until its bytes fit the cover's content room.
+ * The cover itself is not touched. Callers pass a room that already excludes the
+ * payload-frame header and the envelope overhead.
  */
 public final class ImageFit {
 
@@ -27,10 +28,12 @@ public final class ImageFit {
 
     /**
      * Starts at {@code quality} and {@code maxEdge} (0 keeps the original edge)
-     * and steps both down until {@code content + 46 + name + mime} is within
-     * {@code capacity}.
+     * and steps both down until {@code content.length} is within {@code capacity}.
+     * {@code capacity} is the content room already returned to the user: the
+     * 46-byte frame header, name, and MIME have been subtracted, and
+     * {@code ParityFraming.userBudget} has already removed the envelope.
      */
-    public static Result fit(byte[] original, int quality, int maxEdge, int capacity, String name) throws IOException {
+    public static Result fit(byte[] original, int quality, int maxEdge, int capacity) throws IOException {
         if (quality < 40 || quality > 95) {
             throw new IllegalArgumentException("JPEG quality must be from 40 to 95");
         }
@@ -45,40 +48,52 @@ public final class ImageFit {
         int edge = maxEdge > 0 ? Math.min(maxEdge, natural) : natural;
         int floor = Math.min(32, natural);
         int q = quality;
-        Result smallest = null;
         while (true) {
             Result encoded = encode(source, q, edge);
-            smallest = encoded;
-            if (frameLength(encoded.bytes(), name) <= capacity) {
+            int size = encoded.bytes().length;
+            if (size <= capacity) {
                 return encoded;
+            }
+            if (capacity > 0 && size > (long) capacity * 2 && edge > floor) {
+                int next = shrinkToward(edge, floor, size, capacity);
+                if (next < edge) {
+                    edge = next;
+                    continue;
+                }
             }
             if (q > 40) {
                 q = Math.max(40, q - 5);
                 continue;
             }
             if (edge <= floor) {
-                int framed = frameLength(encoded.bytes(), name);
-                throw new IllegalArgumentException(
-                        "Image does not fit this cover even at quality 40 and longest edge " + edge
-                                + " (frame is " + framed + " bytes, capacity is " + capacity + ").");
+                throw tooBig(edge, size, capacity);
             }
             int next = Math.max(floor, (edge * 3) / 4);
             if (next >= edge) {
                 next = Math.max(floor, edge - 1);
             }
             if (next >= edge) {
-                int framed = frameLength(smallest.bytes(), name);
-                throw new IllegalArgumentException(
-                        "Image does not fit this cover even at quality 40 and longest edge " + edge
-                                + " (frame is " + framed + " bytes, capacity is " + capacity + ").");
+                throw tooBig(edge, size, capacity);
             }
             edge = next;
             q = quality;
         }
     }
 
-    private static int frameLength(byte[] content, String name) {
-        return PayloadFrame.build(PayloadKind.IMAGE, name, "image/jpeg", content, true).bytes().length;
+    /** Jump the long edge toward the content room when the JPEG is still far too large. */
+    private static int shrinkToward(int edge, int floor, int size, int capacity) {
+        double ratio = Math.sqrt((double) capacity / size);
+        int next = (int) Math.floor(edge * ratio);
+        if (next >= edge) {
+            next = (edge * 3) / 4;
+        }
+        return Math.max(floor, next);
+    }
+
+    private static IllegalArgumentException tooBig(int edge, int size, int capacity) {
+        return new IllegalArgumentException(
+                "Image does not fit this cover even at quality 40 and longest edge " + edge
+                        + " (image is " + size + " bytes, capacity is " + capacity + ").");
     }
 
     private static Result encode(BufferedImage source, int quality, int maxEdge) throws IOException {

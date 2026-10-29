@@ -73,6 +73,7 @@ final class EmbedPane extends BorderPane {
     private int coverWidth;
     private int coverHeight;
     private int coverNzac = -1;
+    private byte[] coverBytes;
     private String loadedCover = "";
     private BufferedImage coverPreview;
     private BufferedImage stegoPreview;
@@ -310,6 +311,7 @@ final class EmbedPane extends BorderPane {
             coverWidth = 0;
             coverHeight = 0;
             coverNzac = -1;
+            coverBytes = null;
             coverPreview = null;
             stegoPreview = null;
             updateViewToggle();
@@ -322,14 +324,14 @@ final class EmbedPane extends BorderPane {
         }
         Background.start("whisper-cover", () -> {
             BufferedImage image = covers.load(path);
+            byte[] file = java.nio.file.Files.readAllBytes(path);
             int nzac = -1;
             String ext = ImageFormats.extensionOf(path);
             String warning = ImageFormats.lossyInputWarning(path);
             if (ext.equals("jpg") || ext.equals("jpeg")) {
                 try {
-                    byte[] jpeg = java.nio.file.Files.readAllBytes(path);
-                    nzac = com.jxzheng.whisper.carrier.JpegCoefficients.parse(jpeg).nzac();
-                    warning = com.jxzheng.whisper.carrier.JpegCoefficients.orientationWarning(jpeg);
+                    nzac = com.jxzheng.whisper.carrier.JpegCoefficients.parse(file).nzac();
+                    warning = com.jxzheng.whisper.carrier.JpegCoefficients.orientationWarning(file);
                 } catch (RuntimeException ignored) {
                     nzac = -1;
                 }
@@ -339,7 +341,8 @@ final class EmbedPane extends BorderPane {
                     image.getWidth(),
                     image.getHeight(),
                     nzac,
-                    warning);
+                    warning,
+                    file);
         }, loaded -> {
             if (token != loadGeneration) {
                 return;
@@ -350,6 +353,7 @@ final class EmbedPane extends BorderPane {
             coverWidth = loaded.width();
             coverHeight = loaded.height();
             coverNzac = loaded.nzac();
+            coverBytes = loaded.bytes();
             recomputeCapacity();
             viewCover.setSelected(true);
             updateViewToggle();
@@ -374,6 +378,7 @@ final class EmbedPane extends BorderPane {
             coverWidth = 0;
             coverHeight = 0;
             coverNzac = -1;
+            coverBytes = null;
             coverPreview = null;
             stegoPreview = null;
             updateViewToggle();
@@ -496,7 +501,7 @@ final class EmbedPane extends BorderPane {
                     room = PayloadOps.shownCapacity(
                             Files.readAllBytes(job.cover()), job.scheme(), RatePreset.fromId(job.preset()), name, mime);
                 }
-                ImageFit.Result fit = ImageFit.fit(content, 75, 1024, room, name);
+                ImageFit.Result fit = ImageFit.fit(content, 75, 1024, room);
                 content = fit.bytes();
                 reencoded = true;
                 mime = "image/jpeg";
@@ -666,22 +671,18 @@ final class EmbedPane extends BorderPane {
     }
 
     private void recomputeCapacity() {
-        if (coverWidth <= 0 || coverHeight <= 0) {
+        if (coverBytes == null || coverWidth <= 0 || coverHeight <= 0) {
             capacity = Integer.MIN_VALUE;
             refreshSize();
             return;
         }
         String scheme = schemeBox.getValue() == null ? "auto" : schemeBox.getValue();
-        double rate = RatePreset.fromId(presetBox.getValue()).rate();
-        int raw;
-        if (coverNzac >= 0 && (scheme.startsWith("uerd") || "auto".equals(scheme) || "jpeg".equals(scheme))) {
-            raw = com.jxzheng.whisper.schemes.framing.ParityFraming.userBudget(coverNzac, coverNzac, rate);
-        } else {
-            int pixels = coverWidth * coverHeight;
-            raw = com.jxzheng.whisper.schemes.framing.ParityFraming.userBudget(
-                    pixels, pixels, Math.min(rate, com.jxzheng.whisper.schemes.adaptive.HillStcScheme.HARD_RATE));
+        try {
+            capacity = PayloadOps.shownCapacity(
+                    coverBytes, scheme, RatePreset.fromId(presetBox.getValue()), payloadName(), payloadMime());
+        } catch (RuntimeException e) {
+            capacity = Integer.MIN_VALUE;
         }
-        capacity = contentRoom(raw);
         if (coverPreview != null) {
             imageCard.setDetail(dimensions(coverWidth, coverHeight, capacity));
         }
@@ -719,17 +720,33 @@ final class EmbedPane extends BorderPane {
         void openExtract(Path stego, String stegoKey, String encryptKey, boolean decrypt, String scheme, String cipher);
     }
 
-    private int contentRoom(int userBytes) {
-        String mime = textKind.isSelected() ? "text/plain"
-                : imageKind.isSelected() ? "image/png" : "application/octet-stream";
-        int name = 0;
-        if (!textKind.isSelected()) {
-            Path path = pathFrom(messageFileField.getText());
-            if (path != null && path.getFileName() != null) {
-                name = Math.min(255, path.getFileName().toString().getBytes(StandardCharsets.UTF_8).length);
-            }
+    private String payloadName() {
+        if (textKind.isSelected()) {
+            return "";
         }
-        return Math.max(0, userBytes - (46 + name + mime.length()));
+        Path path = pathFrom(messageFileField.getText());
+        if (path == null || path.getFileName() == null) {
+            return "";
+        }
+        return path.getFileName().toString();
+    }
+
+    private String payloadMime() {
+        if (textKind.isSelected()) {
+            return "text/plain";
+        }
+        if (!imageKind.isSelected()) {
+            return "application/octet-stream";
+        }
+        Path path = pathFrom(messageFileField.getText());
+        if (path == null || !Files.isRegularFile(path)) {
+            return "image/png";
+        }
+        try (var in = Files.newInputStream(path)) {
+            return MimeSniffer.mime(in.readNBytes(16));
+        } catch (java.io.IOException e) {
+            return "image/png";
+        }
     }
 
     private record EmbedJob(
@@ -750,7 +767,7 @@ final class EmbedPane extends BorderPane {
             int shownCapacity) {
     }
 
-    private record CoverLoad(BufferedImage preview, int width, int height, int nzac, String warning) {
+    private record CoverLoad(BufferedImage preview, int width, int height, int nzac, String warning, byte[] bytes) {
     }
 
     private record EmbedDone(

@@ -51,7 +51,7 @@ A JPEG's room depends on how many nonzero AC coefficients it has, not on its pix
 
 - **Text.** UTF-8. `--message` / `-m`, or `-f` / `--message-file`.
 - **File.** Any bytes. `--file report.pdf`. The sanitized base name is stored so Extract can suggest it.
-- **Image.** `--image secret.png`. `--fit-quality` and `--fit-max-edge` re-encode the hidden image as JPEG, stepping the quality and the longest edge down until the framed payload fits the cover. The cover is not re-encoded.
+- **Image.** `--image secret.png`. `--fit-quality` and `--fit-max-edge` re-encode the hidden image as JPEG, stepping the quality and the longest edge down until the image bytes fit the cover's content room. The cover is not re-encoded.
 
 Passphrases: `-k` is the stego passphrase. `-E` / `--encrypt-key` is a separate encryption passphrase. Omit `-E` and the stego passphrase is used for both. New embeds use ChaCha20-Poly1305 or AES-256-GCM. `--kdf high` uses the 2 GiB Argon2id profile and is command-line only. Extracting a `--kdf high` embed needs `--kdf high` again, and enough heap for that profile.
 

@@ -1,5 +1,6 @@
 package com.jxzheng.whisper.payload;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,25 +17,39 @@ class ImageFitTest {
     @Test
     void stepsDownUntilFrameFits() throws Exception {
         byte[] original = noisePng(240, 180, 7);
-        ImageFit.Result loose = ImageFit.fit(original, 85, 240, 5_000_000, "photo.png");
-        int looseFrame = PayloadFrame.build(
-                PayloadKind.IMAGE, "photo.png", "image/jpeg", loose.bytes(), true).bytes().length;
-        assertTrue(looseFrame <= 5_000_000);
+        ImageFit.Result loose = ImageFit.fit(original, 85, 240, 5_000_000);
+        assertTrue(loose.bytes().length <= 5_000_000);
         assertTrue(loose.width() >= 200);
 
-        int tight = Math.max(800, looseFrame / 4);
-        ImageFit.Result fitted = ImageFit.fit(original, 85, 240, tight, "photo.png");
-        int frame = PayloadFrame.build(
-                PayloadKind.IMAGE, "photo.png", "image/jpeg", fitted.bytes(), true).bytes().length;
-        assertTrue(frame <= tight, "frame " + frame + " capacity " + tight);
+        int tight = Math.max(800, loose.bytes().length / 4);
+        ImageFit.Result fitted = ImageFit.fit(original, 85, 240, tight);
+        assertTrue(fitted.bytes().length <= tight, "image " + fitted.bytes().length + " capacity " + tight);
         assertTrue(fitted.bytes().length < loose.bytes().length || fitted.width() < loose.width());
+    }
+
+    @Test
+    void contentRoomIsNotChargedTheFrameHeaderAgain() throws Exception {
+        byte[] original = noisePng(96, 64, 5);
+        ImageFit.Result full = ImageFit.fit(original, 80, 96, Integer.MAX_VALUE);
+        int content = full.bytes().length;
+        int framed = PayloadFrame.build(
+                PayloadKind.IMAGE, "photo.png", "image/jpeg", full.bytes(), true).bytes().length;
+        assertTrue(framed > content + 40, "header is " + (framed - content));
+
+        ImageFit.Result fitted = ImageFit.fit(original, 80, 96, content);
+        assertEquals(full.width(), fitted.width());
+        assertEquals(full.height(), fitted.height());
+        assertTrue(fitted.bytes().length <= content);
+        int fittedFrame = PayloadFrame.build(
+                PayloadKind.IMAGE, "photo.png", "image/jpeg", fitted.bytes(), true).bytes().length;
+        assertTrue(fittedFrame > content, "framed payload " + fittedFrame + " exceeds content room " + content);
     }
 
     @Test
     void reportsWhenItNeverFits() {
         byte[] original = noisePng(64, 64, 3);
         IllegalArgumentException error = assertThrows(
-                IllegalArgumentException.class, () -> ImageFit.fit(original, 75, 64, 1, "photo.png"));
+                IllegalArgumentException.class, () -> ImageFit.fit(original, 75, 64, 1));
         assertTrue(error.getMessage().contains("does not fit"));
         assertTrue(error.getMessage().contains("capacity is 1"));
     }

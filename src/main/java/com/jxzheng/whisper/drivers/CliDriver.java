@@ -292,7 +292,7 @@ public class CliDriver {
                 int room = PayloadOps.shownCapacity(
                         Files.readAllBytes(input), scheme,
                         RatePreset.fromId(cl.getOptionValue("preset", "standard")), name, mime);
-                ImageFit.Result fit = ImageFit.fit(content, quality, edge, room, name);
+                ImageFit.Result fit = ImageFit.fit(content, quality, edge, room);
                 content = fit.bytes();
                 reencoded = true;
                 mime = "image/jpeg";
