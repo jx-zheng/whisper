@@ -55,10 +55,6 @@ public class CliDriver {
                 case "embed" -> runEmbed(commandArgs);
                 case "extract" -> runExtract(commandArgs);
                 case "analyze" -> runAnalyze(commandArgs);
-                case "gui" -> {
-                    printGuiHint();
-                    yield 0;
-                }
                 case "help", "-h", "--help" -> {
                     printHelp();
                     yield 0;
@@ -196,20 +192,9 @@ public class CliDriver {
         return value;
     }
 
-    private void printGuiHint() {
-        System.out.println("""
-                Launch the desktop app from the project directory (Java 21+, Maven 3.8+):
-
-                  mvn javafx:run
-
-                The shaded CLI jar does not bundle JavaFX. Embed, Extract, and Analyze
-                in the app call the same library code as this command.
-                """);
-    }
-
     private void printHelp() {
         helpFormatter.printHelp(
-                "whisper <embed|extract|analyze|gui> [options]",
+                "whisper <embed|extract|analyze> [options]",
                 """
                 Embed a secret message in an RGB image, extract one, or run statistical checks.
 
@@ -217,7 +202,6 @@ public class CliDriver {
                   embed     Hide a message in a cover image
                   extract   Recover a message from a stego image
                   analyze   Run chi-square and RS steganalysis on an image
-                  gui       Print how to launch the desktop app
 
                 Stego output must be PNG or BMP (allow-listed RGB containers).
                 JPEG/WebP/GIF and other formats are rejected because they destroy LSBs.
@@ -228,7 +212,6 @@ public class CliDriver {
                   whisper embed -i cover.png -o stego.png -m "hello" -k secret
                   whisper extract -i stego.png -k secret
                   whisper analyze -i stego.png
-                  whisper gui
                 """,
                 true);
     }

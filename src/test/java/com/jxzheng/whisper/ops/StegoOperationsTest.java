@@ -102,7 +102,15 @@ class StegoOperationsTest {
         assertThrows(IllegalArgumentException.class,
                 () -> operations.embed(image, message, "k", true, "zhang-tang", "rot13"));
         assertThrows(IllegalArgumentException.class,
-                () -> operations.embed(image, message, "  ", false, "zhang-tang", "aes"));
+                () -> operations.embed(image, message, "", false, "zhang-tang", "aes"));
+    }
+
+    @Test
+    void whitespaceOnlyKeyStillRoundTrips() throws Exception {
+        BufferedImage cover = noise(32, 32, 8);
+        byte[] message = "kept".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        StegoOperations.EmbedResult stego = operations.embed(cover, message, "  ", false, "zhang-tang", "aes");
+        assertArrayEquals(message, operations.extract(stego.image(), "  ", false, "zhang-tang", "aes"));
     }
 
     @Test

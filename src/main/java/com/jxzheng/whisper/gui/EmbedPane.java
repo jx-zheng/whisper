@@ -32,7 +32,7 @@ final class EmbedPane extends BorderPane {
 
     private final StegoOperations operations;
     private final StatusBar status;
-    private final StegoHandoff handoff;
+    private final Handoff handoff;
 
     private final ImageCard imageCard = new ImageCard();
     private final TextField coverField = new TextField();
@@ -62,13 +62,16 @@ final class EmbedPane extends BorderPane {
     private boolean arranged;
     private boolean stacked;
 
+    /** Last output path this pane filled in from the cover name. A typed path is left alone. */
+    private String suggestedOutput = "";
+
     private Path usedOutput;
     private String usedKey = "";
     private boolean usedEncrypt;
     private String usedScheme = StegoOperations.DEFAULT_SCHEME;
     private String usedCipher = StegoOperations.DEFAULT_CIPHER;
 
-    EmbedPane(StegoOperations operations, StatusBar status, StegoHandoff handoff) {
+    EmbedPane(StegoOperations operations, StatusBar status, Handoff handoff) {
         this.operations = operations;
         this.status = status;
         this.handoff = handoff;
@@ -268,9 +271,7 @@ final class EmbedPane extends BorderPane {
             imageCard.setCaption(fileName(path));
             imageCard.setDetail(dimensions(loaded.width(), loaded.height(), loaded.capacity()));
             imageCard.setWarning(loaded.warning());
-            if (outputField.getText().isBlank()) {
-                outputField.setText(path.resolveSibling(suggestionName(path)).toString());
-            }
+            suggestOutput(path);
             refreshSize();
             if (loaded.warning() != null) {
                 status.show(StatusBar.Level.WARNING, loaded.warning());
@@ -319,12 +320,20 @@ final class EmbedPane extends BorderPane {
             status.show(StatusBar.Level.ERROR, "Choose where to save the stego image.");
             return;
         }
-        if (key.isBlank()) {
+        if (key.isEmpty()) {
             status.show(StatusBar.Level.ERROR, "Enter a passphrase.");
             return;
         }
         if (fromFile && messageFile == null) {
             status.show(StatusBar.Level.ERROR, "Choose a message file.");
+            return;
+        }
+        if (samePath(cover, output)) {
+            status.show(StatusBar.Level.ERROR, "Stego output must be a different file from the cover.");
+            return;
+        }
+        if (Files.isRegularFile(output)
+                && !Choosers.confirmOverwrite(output, getScene() == null ? null : getScene().getWindow())) {
             return;
         }
 
@@ -435,6 +444,28 @@ final class EmbedPane extends BorderPane {
         return width + "×" + height + " · holds " + AnalysisFormat.integer(capacity) + " bytes";
     }
 
+    private void suggestOutput(Path cover) {
+        String suggestion = cover.resolveSibling(suggestionName(cover)).toString();
+        String current = outputField.getText() == null ? "" : outputField.getText().trim();
+        if (current.isEmpty() || current.equals(suggestedOutput)) {
+            outputField.setText(suggestion);
+            suggestedOutput = suggestion;
+        }
+    }
+
+    private static boolean samePath(Path left, Path right) {
+        Path a = left.toAbsolutePath().normalize();
+        Path b = right.toAbsolutePath().normalize();
+        if (a.equals(b)) {
+            return true;
+        }
+        try {
+            return Files.exists(a) && Files.exists(b) && Files.isSameFile(a, b);
+        } catch (java.io.IOException ex) {
+            return false;
+        }
+    }
+
     private static String suggestionName(Path cover) {
         if (cover == null || cover.getFileName() == null) {
             return "stego.png";
@@ -456,44 +487,9 @@ final class EmbedPane extends BorderPane {
         return Path.of(text.trim());
     }
 
-    Button embedButton() {
-        return embedButton;
-    }
-
-    Button openExtractButton() {
-        return openExtractButton;
-    }
-
-    TextField coverField() {
-        return coverField;
-    }
-
-    TextArea messageArea() {
-        return messageArea;
-    }
-
-    RadioButton textModeButton() {
-        return textMode;
-    }
-
-    RadioButton fileModeButton() {
-        return fileMode;
-    }
-
-    TextField messageFileField() {
-        return messageFileField;
-    }
-
-    PassphraseField passphraseField() {
-        return passphrase;
-    }
-
-    CheckBox encryptBox() {
-        return encryptBox;
-    }
-
-    TextField outputField() {
-        return outputField;
+    @FunctionalInterface
+    interface Handoff {
+        void openExtract(Path stego, String key, boolean decrypt, String scheme, String cipher);
     }
 
     private record CoverLoad(BufferedImage preview, int width, int height, int capacity, String warning) {

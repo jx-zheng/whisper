@@ -31,7 +31,7 @@ The GUI calls the same embed, extract, and analyze code as the CLI. It needs a d
 mvn javafx:run
 ```
 
-`whisper gui` prints that command. The shaded JAR does not bundle JavaFX, so `java -jar` stays the CLI.
+The shaded JAR does not bundle JavaFX, so `java -jar` stays the CLI.
 
 Embed, Extract, and Analyze are separate tabs: cover or stego file (you can type a path, browse, or drop a file), masked passphrase, scheme (`zhang-tang`), and cipher (`aes`, used when encryption is on). Message files are UTF-8 text, same as `--message-file`. Stego output is PNG or BMP. Encrypt on embed is the same switch as `-e`; Extract has the matching decrypt switch. After a successful embed, **Open in Extract** copies the stego path, passphrase, and encryption setting. Analyze shows the chi-square and RS figures from the CLI.
 

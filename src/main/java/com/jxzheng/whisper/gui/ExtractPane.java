@@ -41,7 +41,6 @@ final class ExtractPane extends BorderPane {
 
     private int loadGeneration;
     private String loaded = "";
-    private boolean ready;
     private byte[] payload;
     private boolean payloadIsText = true;
     private boolean arranged;
@@ -149,7 +148,6 @@ final class ExtractPane extends BorderPane {
             cipherBox.setValue(cipher);
         }
         loaded = "";
-        ready = false;
         clearResult();
         status.show(StatusBar.Level.INFO, "Stego loaded in Extract. Passphrase and encryption settings were copied.");
         reload(false);
@@ -173,7 +171,6 @@ final class ExtractPane extends BorderPane {
     private void reload(boolean force) {
         Path path = pathFrom(imageField.getText());
         int token = ++loadGeneration;
-        ready = false;
         if (path == null) {
             loaded = "";
             imageCard.clear("No image selected");
@@ -181,7 +178,6 @@ final class ExtractPane extends BorderPane {
             return;
         }
         if (!force && path.toString().equals(loaded)) {
-            ready = true;
             return;
         }
         clearResult();
@@ -193,7 +189,6 @@ final class ExtractPane extends BorderPane {
                 return;
             }
             loaded = path.toString();
-            ready = true;
             imageCard.setPreview(FxImages.toFx(loadedImage.preview()));
             imageCard.setCaption(fileName(path));
             imageCard.setDetail(loadedImage.width() + "×" + loadedImage.height());
@@ -203,7 +198,6 @@ final class ExtractPane extends BorderPane {
                 return;
             }
             loaded = "";
-            ready = false;
             imageCard.clear(fileName(path));
             imageCard.setWarning(error.getMessage());
             status.show(StatusBar.Level.ERROR, error.getMessage());
@@ -220,7 +214,7 @@ final class ExtractPane extends BorderPane {
             status.show(StatusBar.Level.ERROR, "Choose a stego image.");
             return;
         }
-        if (key.isBlank()) {
+        if (key.isEmpty()) {
             status.show(StatusBar.Level.ERROR, "Enter a passphrase.");
             return;
         }
@@ -301,30 +295,6 @@ final class ExtractPane extends BorderPane {
             return null;
         }
         return Path.of(text.trim());
-    }
-
-    boolean imageReady() {
-        return ready;
-    }
-
-    String resultText() {
-        return result.getText() == null ? "" : result.getText();
-    }
-
-    Button extractButton() {
-        return extractButton;
-    }
-
-    TextField imageField() {
-        return imageField;
-    }
-
-    PassphraseField passphraseField() {
-        return passphrase;
-    }
-
-    CheckBox decryptBox() {
-        return decryptBox;
     }
 
     private record Loaded(BufferedImage preview, int width, int height) {

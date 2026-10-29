@@ -4,6 +4,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
 import javafx.stage.FileChooser;
 import javafx.stage.Window;
 
@@ -115,9 +117,25 @@ final class Choosers {
         if (file == null) {
             return null;
         }
-        Path path = withExtension(file.toPath(), chooser);
+        Path chosen = file.toPath();
+        Path path = withExtension(chosen, chooser);
+        if (path != null && !path.equals(chosen) && Files.exists(path) && !confirmOverwrite(path, owner)) {
+            return null;
+        }
         remember(path);
         return path;
+    }
+
+    static boolean confirmOverwrite(Path path, Window owner) {
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        if (owner != null) {
+            alert.initOwner(owner);
+        }
+        String name = path.getFileName() == null ? path.toString() : path.getFileName().toString();
+        alert.setTitle("Overwrite file");
+        alert.setHeaderText("Overwrite " + name + "?");
+        alert.setContentText(path.toString());
+        return alert.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK;
     }
 
     private static FileChooser base(String title) {

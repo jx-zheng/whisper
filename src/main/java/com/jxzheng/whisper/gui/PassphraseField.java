@@ -50,12 +50,4 @@ final class PassphraseField extends HBox {
         hidden.setOnAction(handler);
         shown.setOnAction(handler);
     }
-
-    void setRevealed(boolean revealed) {
-        show.setSelected(revealed);
-    }
-
-    boolean revealed() {
-        return show.isSelected();
-    }
 }

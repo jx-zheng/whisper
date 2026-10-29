@@ -101,23 +101,23 @@ class CliDriverTest {
     }
 
     @Test
-    void helpMentionsAnalyzeAndGuiWithoutConflictMarkers() {
+    void helpMentionsAnalyzeWithoutConflictMarkers() {
         try (Capture out = Capture.of()) {
             assertEquals(0, new CliDriver().run(new String[] {"help"}));
             String text = out.stdout();
             assertTrue(text.contains("analyze"));
-            assertTrue(text.contains("gui"));
             assertTrue(text.contains("PNG or BMP"));
+            assertFalse(text.contains("gui"));
             assertFalse(text.contains("<<<<<<<"));
             assertFalse(text.contains(">>>>>>>"));
         }
     }
 
     @Test
-    void guiCommandPrintsLaunchInstructions() {
+    void guiIsNotACommand() {
         try (Capture out = Capture.of()) {
-            assertEquals(0, new CliDriver().run(new String[] {"gui"}));
-            assertTrue(out.stdout().contains("mvn javafx:run"));
+            assertEquals(1, new CliDriver().run(new String[] {"gui"}));
+            assertTrue(out.stderr().contains("Unknown command"));
         }
     }
 

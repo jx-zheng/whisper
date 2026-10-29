@@ -250,22 +250,6 @@ final class AnalyzePane extends BorderPane {
         return Path.of(text.trim());
     }
 
-    String pValueText() {
-        return pValue.value();
-    }
-
-    String rateText() {
-        return rate.value();
-    }
-
-    Button analyzeButton() {
-        return analyzeButton;
-    }
-
-    TextField imageField() {
-        return imageField;
-    }
-
     private record AnalysisDone(Report report, BufferedImage preview, int width, int height) {
     }
 
@@ -287,10 +271,6 @@ final class AnalyzePane extends BorderPane {
 
         void setValue(String text) {
             value.setText(text);
-        }
-
-        String value() {
-            return value.getText();
         }
     }
 }

@@ -35,10 +35,6 @@ public final class WhisperApp extends Application {
     private Button themeButton;
 
     public static void main(String[] args) {
-        String prism = System.getenv("WHISPER_PRISM");
-        if (prism != null && !prism.isBlank()) {
-            System.setProperty("prism.order", prism);
-        }
         System.setProperty("apple.awt.application.name", "Whisper");
         launch(args);
     }
@@ -48,18 +44,17 @@ public final class WhisperApp extends Application {
         UiFonts.load();
         StegoOperations operations = new StegoOperations();
         StatusBar status = new StatusBar();
-        EmbedPane embed = new EmbedPane(operations, status, (stego, key, decrypt, scheme, cipher) -> {
-            extractHolder.load(stego, key, decrypt, scheme, cipher);
-            showMode(extractToggle);
-        });
         ExtractPane extract = new ExtractPane(operations, status);
-        extractHolder.pane = extract;
         AnalyzePane analyze = new AnalyzePane(operations, status);
 
         ToggleGroup modes = new ToggleGroup();
         embedToggle = modeButton("Embed", modes);
         extractToggle = modeButton("Extract", modes);
         ToggleButton analyzeToggle = modeButton("Analyze", modes);
+        EmbedPane embed = new EmbedPane(operations, status, (stego, key, decrypt, scheme, cipher) -> {
+            extract.loadFromEmbed(stego, key, decrypt, scheme, cipher);
+            extractToggle.setSelected(true);
+        });
         embedToggle.setSelected(true);
 
         ScrollPane embedPage = scroll(embed);
@@ -116,12 +111,6 @@ public final class WhisperApp extends Application {
         stage.setX(bounds.getMinX() + Math.max(0, (bounds.getWidth() - stage.getWidth()) / 2));
         stage.setY(bounds.getMinY() + Math.max(0, (bounds.getHeight() - stage.getHeight()) / 2));
         stage.show();
-
-        SmokeRun.start(scene, status, themeButton, embedToggle, extractToggle, analyzeToggle, embed, extract, analyze);
-    }
-
-    private void showMode(ToggleButton button) {
-        button.setSelected(true);
     }
 
     private VBox header(boolean dark, ToggleGroup modes, ToggleButton embed, ToggleButton extract, ToggleButton analyze) {
@@ -183,13 +172,4 @@ public final class WhisperApp extends Application {
 
     private ToggleButton embedToggle;
     private ToggleButton extractToggle;
-    private final ExtractRef extractHolder = new ExtractRef();
-
-    private static final class ExtractRef {
-        private ExtractPane pane;
-
-        void load(java.nio.file.Path stego, String key, boolean decrypt, String scheme, String cipher) {
-            pane.loadFromEmbed(stego, key, decrypt, scheme, cipher);
-        }
-    }
 }

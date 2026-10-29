@@ -224,7 +224,7 @@ public final class StegoOperations {
     }
 
     private static void requireKey(String key) {
-        if (key == null || key.isBlank()) {
+        if (key == null || key.isEmpty()) {
             throw new IllegalArgumentException("Passphrase must not be empty");
         }
     }
