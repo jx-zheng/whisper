@@ -9,7 +9,7 @@ Whisper hides a message, a file, or an image inside a picture, then checks that 
 <p align="center">
   <img src="docs/img/hero.png" width="880" alt="Whisper Embed screen: a cover photo beside the message to hide">
   <br>
-  <em>Embed hides text, a file, or an image in a cover picture. The cover stays a normal PNG, BMP, or JPEG.</em>
+  <em>Embed hides text, a file, or an image in a cover picture.</em>
 </p>
 
 The cover stays a normal PNG, BMP, or JPEG. Whisper encrypts only the payload. It does not scramble the picture, and it does not survive recompression, resizing, screenshots, or a chat app that re-encodes uploads. A careful analyst can still try to detect that something was embedded. Use a strong passphrase.

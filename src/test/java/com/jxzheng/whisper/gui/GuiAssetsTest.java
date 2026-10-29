@@ -32,6 +32,32 @@ class GuiAssetsTest {
                 assertIcon(icon, size);
             }
         }
+        try (InputStream in = GuiAssetsTest.class.getResourceAsStream(
+                "/com/jxzheng/whisper/gui/icon-header.png")) {
+            assertNotNull(in, "icon-header.png");
+            BufferedImage header = ImageIO.read(in);
+            assertIcon(header, 512);
+            assertTrue(hasTeal(header), "header mark is missing the teal waves");
+            assertTrue(hasLightFrame(header), "header mark needs a light frame on the dark chrome");
+        }
+    }
+
+    /** The header frame is a light slate stroke, not the charcoal tile. */
+    private static boolean hasLightFrame(BufferedImage icon) {
+        int light = 0;
+        for (int y = 0; y < icon.getHeight(); y += 2) {
+            for (int x = 0; x < icon.getWidth(); x += 2) {
+                int argb = icon.getRGB(x, y);
+                int a = (argb >>> 24) & 0xff;
+                int r = (argb >> 16) & 0xff;
+                int g = (argb >> 8) & 0xff;
+                int b = argb & 0xff;
+                if (a > 180 && r > 140 && g > 140 && b > 150 && Math.abs(r - g) < 30) {
+                    light++;
+                }
+            }
+        }
+        return light > 40;
     }
 
     private static void assertIcon(BufferedImage icon, int size) {

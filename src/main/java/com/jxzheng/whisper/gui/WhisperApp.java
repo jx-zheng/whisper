@@ -113,7 +113,8 @@ public final class WhisperApp extends Application {
 
     private VBox header(ToggleGroup modes, ToggleButton embed, ToggleButton extract, ToggleButton analyze) {
         ImageView mark = new ImageView();
-        var icon = WhisperApp.class.getResource("icon.png");
+        // Waves and a light frame. The charcoal tile disappears on the dark header.
+        var icon = WhisperApp.class.getResource("icon-header.png");
         if (icon != null) {
             // Decode above the CSS size so the mark stays sharp on high-DPI screens.
             mark.setImage(new Image(icon.toExternalForm(), 144, 144, true, true, false));
@@ -143,7 +144,7 @@ public final class WhisperApp extends Application {
 
     /**
      * Largest first. JavaFX picks the closest size for the title bar, taskbar, and dock.
-     * {@code icon.png} is the 512px master the header mark uses as well.
+     * These stay the charcoal squircle. The header uses {@code icon-header.png} instead.
      */
     private static void installIcons(Stage stage) {
         for (String name : new String[] {
