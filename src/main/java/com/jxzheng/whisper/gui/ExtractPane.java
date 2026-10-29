@@ -29,7 +29,7 @@ final class ExtractPane extends BorderPane {
     private final ImageCard imageCard = new ImageCard();
     private final TextField imageField = new TextField();
     private final PassphraseField passphrase = new PassphraseField();
-    private final CheckBox decryptBox = new CheckBox("Decrypt (AES-GCM)");
+    private final CheckBox decryptBox = new CheckBox("Decrypt payload (AES-GCM)");
     private final ComboBox<String> schemeBox;
     private final ComboBox<String> cipherBox;
     private final TextArea result = new TextArea();
@@ -77,8 +77,8 @@ final class ExtractPane extends BorderPane {
                 Forms.field("Passphrase", passphrase),
                 decryptBox,
                 new HBox(12, schemeField, cipherField),
-                Forms.hint("Turn decrypt on when the payload was embedded with encryption. "
-                        + "Scheme and cipher match --scheme and --cipher.")));
+                Forms.hint("Turn this on when the hidden message was encrypted before embedding. "
+                        + "The stego image itself is not ciphertext. Scheme and cipher match --scheme and --cipher.")));
         VBox resultCard = card("Message", new VBox(8, resultMeta, result,
                 new HBox(8, saveButton)));
         HBox actions = new HBox(8, extractButton);

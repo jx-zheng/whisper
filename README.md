@@ -6,7 +6,7 @@ Steganographic messaging via Zhang–Tang LSB-pair embedding.
 
 The scheme hides each secret bit `m` in a color-channel sample `c` relative to the previous sample `p` so that `(LSB(p) + LSB(c')) mod 2 == m`, adjusting `c` by at most ±1 (with overflow corrected by ±2). Pixel walk order is keyed, so extraction needs the same passphrase. A truncated HMAC over the length header rejects most wrong-key extractions.
 
-Optional AES-128-GCM (PBKDF2 key derivation) can encrypt the payload before embedding.
+Optional AES-128-GCM (PBKDF2 key derivation) encrypts the hidden message before embedding. The stego file stays a normal PNG or BMP.
 Pixel walks use a PBKDF2-stretched HMAC-SHA256 counter PRNG (not `String.hashCode()`). This changes walks vs earlier builds — re-embed existing messages. Use `-e` when confidentiality matters.
 Passphrases on the command line may be visible to other local users — prefer a private shell history.
 
@@ -33,7 +33,7 @@ mvn javafx:run
 
 The shaded JAR does not bundle JavaFX, so `java -jar` stays the CLI.
 
-Embed, Extract, and Analyze are separate tabs: cover or stego file (you can type a path, browse, or drop a file), masked passphrase, scheme (`zhang-tang`), and cipher (`aes`, used when encryption is on). Message files are UTF-8 text, same as `--message-file`. Stego output is PNG or BMP. Encrypt on embed is the same switch as `-e`; Extract has the matching decrypt switch. After a successful embed, **Open in Extract** copies the stego path, passphrase, and encryption setting. Analyze shows the chi-square and RS figures from the CLI.
+Embed, Extract, and Analyze are separate tabs: cover or stego file (you can type a path, browse, or drop a file), masked passphrase, scheme (`zhang-tang`), and cipher (`aes`, used when encryption is on). Message files are UTF-8 text, same as `--message-file`. Stego output is PNG or BMP. **Encrypt payload (AES-GCM)** matches `-e`: it encrypts the hidden message before embedding, and the output stays a normal PNG or BMP. Extract has **Decrypt payload (AES-GCM)**. After a successful embed, **Open in Extract** copies the stego path, passphrase, and encryption setting. Analyze shows the chi-square and RS figures from the CLI.
 
 ## Usage
 
@@ -63,7 +63,7 @@ java -jar target/whisper-0.9.0.jar analyze -i stego.png
 | `-m, --message` | Message text to embed |
 | `-f, --message-file` | Read embed message from a file |
 | `-k, --key` | Stego key (and cipher passphrase when `-e` is set) |
-| `-e, --encrypt` | Encrypt before embed / decrypt after extract |
+| `-e, --encrypt` | Encrypt message payload before embed / decrypt after extract |
 | `-s, --scheme` | Scheme name (default: `zhang-tang`) |
 | `-c, --cipher` | Cipher name when `-e` is set (default: `aes`) |
 | `-h, --help` | Usage help |

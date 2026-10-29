@@ -41,7 +41,7 @@ final class EmbedPane extends BorderPane {
     private final RadioButton textMode = new RadioButton("Text");
     private final RadioButton fileMode = new RadioButton("File");
     private final PassphraseField passphrase = new PassphraseField();
-    private final CheckBox encryptBox = new CheckBox("Encrypt (AES-GCM)");
+    private final CheckBox encryptBox = new CheckBox("Encrypt payload (AES-GCM)");
     private final ComboBox<String> schemeBox;
     private final ComboBox<String> cipherBox;
     private final TextField outputField = new TextField();
@@ -121,8 +121,10 @@ final class EmbedPane extends BorderPane {
                 encryptBox,
                 new HBox(12, schemeField, cipherField),
                 Forms.field("Stego image", Forms.pathRow(outputField, browseButton("Save as…", this::chooseOutput))),
-                Forms.hint("PNG or BMP only. The passphrase selects the pixel walk and, when encryption is on, "
-                        + "AES-GCM (+" + AesCipher.OVERHEAD_BYTES + " bytes).")));
+                Forms.hint("AES-GCM encrypts the hidden message before embedding (+"
+                        + AesCipher.OVERHEAD_BYTES
+                        + " bytes). The stego file stays a normal PNG or BMP. "
+                        + "The passphrase selects the pixel walk and is the cipher passphrase when encryption is on.")));
 
         sizeLabel.getStyleClass().add("hint");
         HBox actions = new HBox(8, embedButton, openExtractButton, Forms.spacer(), sizeLabel);

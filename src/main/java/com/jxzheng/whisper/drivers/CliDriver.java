@@ -232,7 +232,7 @@ public class CliDriver {
         options.addOption(Option.builder("c").longOpt("cipher").hasArg().argName("name")
                 .desc("Cipher to use with -e (default: aes)").build());
         options.addOption(Option.builder("e").longOpt("encrypt")
-                .desc("Encrypt before embed / decrypt after extract").build());
+                .desc("Encrypt message payload before embed / decrypt after extract").build());
         options.addOption(Option.builder("k").longOpt("key").hasArg().argName("key")
                 .desc("Steganographic key (also used as cipher passphrase when -e is set)").build());
         options.addOption(Option.builder("h").longOpt("help").desc("Show usage information").build());
