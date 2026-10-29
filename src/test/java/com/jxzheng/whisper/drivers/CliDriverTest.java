@@ -368,18 +368,21 @@ class CliDriverTest {
     @Test
     void hillOnJpegCoverIsRefused(@TempDir Path dir) throws Exception {
         Path cover = dir.resolve("cover.jpg");
-        Path out = dir.resolve("out.png");
         ImageIO.write(noise(48, 48), "jpg", cover.toFile());
         CliDriver driver = new CliDriver();
         for (String scheme : new String[] {"hill-stc", "hill"}) {
-            try (Capture error = Capture.of()) {
-                assertEquals(1, driver.run(new String[] {
-                        "embed", "-i", cover.toString(), "-o", out.toString(),
-                        "-m", "x", "-k", "pw", "-s", scheme, "--kdf", "test"
-                }), error.stderr());
-                assertTrue(error.stderr().contains("uerd-stc"), error.stderr());
-                assertTrue(error.stderr().toLowerCase(Locale.ROOT).contains("jpeg"), error.stderr());
-                assertFalse(Files.exists(out));
+            for (String ext : new String[] {"png", "jpg"}) {
+                Path out = dir.resolve("out-" + scheme + "." + ext);
+                try (Capture error = Capture.of()) {
+                    assertEquals(1, driver.run(new String[] {
+                            "embed", "-i", cover.toString(), "-o", out.toString(),
+                            "-m", "x", "-k", "pw", "-s", scheme, "--kdf", "test"
+                    }), error.stderr());
+                    assertTrue(error.stderr().contains("HILL needs a PNG or BMP cover"), error.stderr());
+                    assertTrue(error.stderr().contains("uerd-stc"), error.stderr());
+                    assertFalse(error.stderr().contains("Refusing to write"), error.stderr());
+                    assertFalse(Files.exists(out));
+                }
             }
         }
     }
@@ -547,6 +550,31 @@ class CliDriverTest {
             }));
             assertTrue(error.stderr().contains("Output directory does not exist"), error.stderr());
             assertFalse(error.stderr().contains("Verified"), error.stderr());
+        }
+    }
+
+    @Test
+    void extractOutputMissingParentNamesTheDirectory(@TempDir Path dir) throws Exception {
+        Path cover = dir.resolve("cover.png");
+        Path stego = dir.resolve("stego.png");
+        ImageIO.write(noise(160, 120), "png", cover.toFile());
+        CliDriver driver = new CliDriver();
+        try (Capture embed = Capture.of()) {
+            assertEquals(0, driver.run(new String[] {
+                    "embed", "-i", cover.toString(), "-o", stego.toString(),
+                    "-m", "hello", "-k", "pw", "--kdf", "test"
+            }), embed.stderr());
+        }
+        Path dest = dir.resolve("missing").resolve("msg.txt");
+        try (Capture error = Capture.of()) {
+            assertEquals(1, driver.run(new String[] {
+                    "extract", "-i", stego.toString(), "-k", "pw", "--kdf", "test",
+                    "-o", dest.toString()
+            }));
+            assertTrue(error.stderr().contains("Output directory does not exist"), error.stderr());
+            assertTrue(error.stderr().contains(dir.resolve("missing").toString()), error.stderr());
+            assertFalse(error.stderr().contains("File not found"), error.stderr());
+            assertFalse(Files.exists(dest));
         }
     }
 

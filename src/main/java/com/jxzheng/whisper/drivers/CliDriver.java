@@ -269,14 +269,18 @@ public class CliDriver {
         Path input = requiredPath(cl, "input-file");
         Path output = requiredPath(cl, "output-file");
         rejectConflictingPayloads(cl);
-        validateFit(cl);
+        Fit limits = fitOptions(cl);
         String scheme = cl.getOptionValue("scheme", "auto");
         Envelope.SuiteKind suite = suite(cl, true);
-        String resolved = SchemeRegistry.canonical(scheme, sniffFormat(input));
+        String format = sniffFormat(input);
+        String resolved = SchemeRegistry.canonical(scheme, format);
         if ("zhang-tang".equals(resolved)) {
             throw new IllegalArgumentException("Zhang–Tang is decrypt-only. New embeds use hill-stc or uerd-stc.");
         }
-        if (!cl.hasOption("keep-metadata") && "jpeg".equals(sniffFormat(input))) {
+        if ("hill-stc".equals(resolved) && "jpeg".equals(format)) {
+            throw new IllegalArgumentException(PayloadOps.HILL_ON_JPEG);
+        }
+        if (!cl.hasOption("keep-metadata") && "jpeg".equals(format)) {
             String turned = JpegCoefficients.orientationWarning(Files.readAllBytes(input));
             if (turned != null) {
                 System.err.println(turned);
@@ -302,12 +306,8 @@ public class CliDriver {
             name = image.getFileName().toString();
             mime = MimeSniffer.mime(content);
             if (cl.hasOption("fit-quality") || cl.hasOption("fit-max-edge")) {
-                int quality = cl.hasOption("fit-quality")
-                        ? wholeNumber(cl.getOptionValue("fit-quality"), "--fit-quality")
-                        : 75;
-                int edge = cl.hasOption("fit-max-edge")
-                        ? wholeNumber(cl.getOptionValue("fit-max-edge"), "--fit-max-edge")
-                        : 0;
+                int quality = limits.quality();
+                int edge = limits.edge();
                 int room = PayloadOps.fitRoom(
                         Files.readAllBytes(input), scheme,
                         RatePreset.fromId(cl.getOptionValue("preset", "standard")), name);
@@ -373,7 +373,9 @@ public class CliDriver {
             return outcome.exitCode();
         }
         if (cl.hasOption("output-file")) {
-            Files.write(Path.of(cl.getOptionValue("output-file")), outcome.content());
+            Path dest = Path.of(cl.getOptionValue("output-file"));
+            requireExistingParent(dest);
+            Files.write(dest, outcome.content());
         } else if (cl.hasOption("out-dir")) {
             writeExtracted(outcome, Path.of(cl.getOptionValue("out-dir")));
         } else if (outcome.kind() == PayloadKind.TEXT || outcome.legacy()) {
@@ -400,7 +402,11 @@ public class CliDriver {
             try {
                 Files.createDirectories(dir);
             } catch (IOException e) {
-                throw new IllegalArgumentException("Output directory does not exist: " + dir);
+                String reason = e.getMessage();
+                if (reason == null || reason.isBlank()) {
+                    reason = e.getClass().getSimpleName();
+                }
+                throw new IllegalArgumentException("Could not create output directory: " + dir + " (" + reason + ")");
             }
         }
         String name = outcome.name() == null || outcome.name().isBlank()
@@ -436,15 +442,30 @@ public class CliDriver {
         }
     }
 
-    private static void validateFit(CommandLine cl) {
+    /** Absent flags keep ImageFit's defaults: quality 75, edge 0 (original size). */
+    private record Fit(int quality, int edge) {
+    }
+
+    private static Fit fitOptions(CommandLine cl) {
+        int quality = 75;
+        int edge = 0;
         if (cl.hasOption("fit-quality")) {
-            wholeNumber(cl.getOptionValue("fit-quality"), "--fit-quality");
+            quality = wholeNumber(cl.getOptionValue("fit-quality"), "--fit-quality");
         }
         if (cl.hasOption("fit-max-edge")) {
-            int edge = wholeNumber(cl.getOptionValue("fit-max-edge"), "--fit-max-edge");
+            edge = wholeNumber(cl.getOptionValue("fit-max-edge"), "--fit-max-edge");
             if (edge <= 0) {
                 throw new IllegalArgumentException("--fit-max-edge must be a positive number of pixels");
             }
+        }
+        return new Fit(quality, edge);
+    }
+
+    /** Same parent rule as {@link com.jxzheng.whisper.ops.AtomicFiles}. */
+    private static void requireExistingParent(Path destination) {
+        Path parent = destination.getParent();
+        if (parent != null && !Files.isDirectory(parent)) {
+            throw new IllegalArgumentException("Output directory does not exist: " + parent);
         }
     }
 

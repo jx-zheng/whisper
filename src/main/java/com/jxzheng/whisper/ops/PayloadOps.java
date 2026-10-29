@@ -80,6 +80,10 @@ public final class PayloadOps {
     private final HillStcScheme hill = new HillStcScheme();
     private final UerdStcScheme uerd = new UerdStcScheme();
 
+    /** Shared by the CLI and hide so a JPEG output path cannot hide this refusal. */
+    public static final String HILL_ON_JPEG =
+            "HILL needs a PNG or BMP cover. JPEG covers use the JPEG scheme (uerd-stc).";
+
     public Outcome hide(HideRequest request) throws Exception {
         byte[] cover = Files.readAllBytes(request.cover());
         String format = sniff(cover);
@@ -89,8 +93,7 @@ public final class PayloadOps {
                     "Zhang–Tang is decrypt-only. New embeds use hill-stc or uerd-stc.");
         }
         if ("hill-stc".equals(scheme) && "jpeg".equals(format)) {
-            throw new IllegalArgumentException(
-                    "HILL needs a PNG or BMP cover. JPEG covers use the JPEG scheme (uerd-stc).");
+            throw new IllegalArgumentException(HILL_ON_JPEG);
         }
         PayloadFrame.Built frame = PayloadFrame.build(
                 request.kind(), request.name(), request.mime(), request.content(), request.reencoded());
@@ -492,13 +495,11 @@ public final class PayloadOps {
         if (file == null || file.length < 2) {
             return false;
         }
-        if (pngSignature(file)) {
+        String format = sniff(file);
+        if ("jpeg".equals(format) || "bmp".equals(format)) {
             return true;
         }
-        if (file[0] == 'B' && file[1] == 'M') {
-            return true;
-        }
-        return file.length >= 3 && (file[0] & 0xff) == 0xff && (file[1] & 0xff) == 0xd8;
+        return pngSignature(file);
     }
 
     private static boolean pngSignature(byte[] file) {
