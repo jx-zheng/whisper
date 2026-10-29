@@ -2,7 +2,7 @@
 
 Steganographic messaging via Zhang–Tang LSB-pair embedding.
 
-**whisper** is a Java command-line tool that embeds secret messages in RGB images using the Zhang–Tang LSB-pair steganography scheme from *[A Novel Image Steganography Algorithm Against Statistical Analysis](https://ieeexplore.ieee.org/document/4370824)* (Hong-Juan Zhang & Hong-Jun Tang, ICMLC 2007).
+**whisper** is a Java command-line tool, with a desktop app for the same operations. It embeds secret messages in RGB images using the Zhang–Tang LSB-pair steganography scheme from *[A Novel Image Steganography Algorithm Against Statistical Analysis](https://ieeexplore.ieee.org/document/4370824)* (Hong-Juan Zhang & Hong-Jun Tang, ICMLC 2007).
 
 The scheme hides each secret bit `m` in a color-channel sample `c` relative to the previous sample `p` so that `(LSB(p) + LSB(c')) mod 2 == m`, adjusting `c` by at most ±1 (with overflow corrected by ±2). Pixel walk order is keyed, so extraction needs the same passphrase. A truncated HMAC over the length header rejects most wrong-key extractions.
 
@@ -21,7 +21,19 @@ Passphrases on the command line may be visible to other local users — prefer a
 mvn clean package
 ```
 
-This produces an executable uber-JAR at `target/whisper-0.9.0.jar`.
+This produces an executable uber-JAR at `target/whisper-0.9.0.jar`. The CLI is unchanged: `java -jar` still runs embed, extract, and analyze.
+
+## Desktop app
+
+The GUI calls the same embed, extract, and analyze code as the CLI. It needs a display. Maven downloads the OpenJFX 21 natives for the OS you are building on (macOS, Windows, or Linux). On Linux the machine also needs GTK 3, which desktop installs already have.
+
+```bash
+mvn javafx:run
+```
+
+`whisper gui` prints that command. The shaded JAR does not bundle JavaFX, so `java -jar` stays the CLI.
+
+Embed, Extract, and Analyze are separate tabs: cover or stego file (you can type a path, browse, or drop a file), masked passphrase, scheme (`zhang-tang`), and cipher (`aes`, used when encryption is on). Message files are UTF-8 text, same as `--message-file`. Stego output is PNG or BMP. Encrypt on embed is the same switch as `-e`; Extract has the matching decrypt switch. After a successful embed, **Open in Extract** copies the stego path, passphrase, and encryption setting. Analyze shows the chi-square and RS figures from the CLI.
 
 ## Usage
 

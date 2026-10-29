@@ -1,6 +1,7 @@
 package com.jxzheng.whisper.encryption;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -39,8 +40,8 @@ class AesCipherTest {
 
     @Test
     void ciphertextIncludesSaltAndIv() throws EncryptionException {
-        byte[] ciphertext = cipher.encrypt("x".getBytes(StandardCharsets.UTF_8), "key");
-        // 16-byte salt + 12-byte IV + ciphertext/tag
-        assertTrue(ciphertext.length > 28);
+        byte[] plaintext = "x".getBytes(StandardCharsets.UTF_8);
+        byte[] ciphertext = cipher.encrypt(plaintext, "key");
+        assertEquals(plaintext.length + AesCipher.OVERHEAD_BYTES, ciphertext.length);
     }
 }

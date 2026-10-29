@@ -28,6 +28,8 @@ public class AesCipher implements CipherService {
     private static final int IV_BYTES = 12;
     private static final int SALT_BYTES = 16;
     private static final int PBKDF2_ITERATIONS = 65_536;
+    /** Salt + IV + GCM tag. Ciphertext length equals the plaintext length. */
+    public static final int OVERHEAD_BYTES = SALT_BYTES + IV_BYTES + (GCM_TAG_BITS / 8);
 
     private final SecureRandom secureRandom = new SecureRandom();
 
